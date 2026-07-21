@@ -23,6 +23,7 @@ npm run dev
 npm run build
 npm run start
 npm run lint
+npm run test
 npm run typecheck
 npm run format
 npm run format:check
@@ -35,6 +36,7 @@ npm run format:check
 - `components/`: shared UI and future shadcn/ui components.
 - `features/`: product features, intentionally empty for this bootstrap.
 - `lib/`: frontend infrastructure and generic utilities.
+- `lib/api/`: HTTP client, runtime API configuration, response parsing, error normalization and generic HTTP helpers.
 - `hooks/`: shared non-business hooks.
 - `config/`: public non-sensitive frontend configuration.
 - `styles/`: Tailwind CSS v4 global foundations.
@@ -49,6 +51,9 @@ npm run format:check
 - Keep shared components free of business logic.
 - Keep providers global, explicit and non-sensitive.
 - Use TanStack Query for server state only.
+- Use `lib/api/` for backend communication; components must not call `fetch` directly.
+- Keep API errors normalized through the shared error hierarchy.
+- Keep DTOs and feature services inside their future feature boundaries.
 - Use React Hook Form and Zod for future forms.
 
 ## Start
