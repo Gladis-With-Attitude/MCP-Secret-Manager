@@ -12,6 +12,8 @@ class AuditContext:
     ip_address: str | None = None
     user_agent: str | None = None
     request_id: str | None = None
+    protocol: str = "rest"
+    transport: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

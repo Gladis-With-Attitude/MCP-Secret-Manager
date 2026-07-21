@@ -15,3 +15,7 @@ class ProjectNotFoundError(SecretApplicationError):
 
 class SecretAlreadyExistsError(SecretApplicationError):
     """Raised when a Secret key already exists in a Project."""
+
+
+class SecretNotFoundError(SecretApplicationError):
+    """Raised when a Secret does not exist in the expected Project."""

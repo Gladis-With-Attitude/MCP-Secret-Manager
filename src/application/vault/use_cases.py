@@ -67,3 +67,13 @@ class CreateVaultUseCase:
             return VaultName(raw_name)
         except VaultDomainError as exc:
             raise VaultValidationError(str(exc)) from exc
+
+
+class ListVaultsUseCase:
+    def __init__(self, unit_of_work: UnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(self) -> tuple[VaultResponse, ...]:
+        async with self._unit_of_work as unit_of_work:
+            vaults = await unit_of_work.vaults.list()
+        return tuple(VaultResponse.from_domain(vault) for vault in vaults)

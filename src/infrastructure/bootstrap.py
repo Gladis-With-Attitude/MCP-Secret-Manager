@@ -13,20 +13,27 @@ from application.identity.use_cases import (
     CreateServiceAccountUseCase,
     CreateUserUseCase,
 )
-from application.project.use_cases import CreateProjectUseCase
+from application.project.use_cases import CreateProjectUseCase, ListProjectsUseCase
 from application.rbac.use_cases import AuthorizeUseCase, PermissionChecker
-from application.secret.use_cases import CreateSecretUseCase
+from application.secret.use_cases import (
+    CreateSecretUseCase,
+    GetSecretUseCase,
+    ListSecretsUseCase,
+    SearchSecretsUseCase,
+)
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
     ListSecretVersionsUseCase,
 )
-from application.vault.use_cases import CreateVaultUseCase
-from infrastructure.config import AppSettings, get_settings
+from application.vault.use_cases import CreateVaultUseCase, ListVaultsUseCase
+from infrastructure.config import AppSettings, ConfigurationError, get_settings
 from infrastructure.crypto import AesGcmCryptoProvider
 from infrastructure.identity import Argon2idApiKeyHasher, SecureApiKeySecretGenerator
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from presentation.mcp.server import McpServer
+from presentation.mcp.tools import SecretManagerMcpTools
 from presentation.rest.app import create_app
 from presentation.rest.dependencies import (
     get_active_secret_version_use_case,
@@ -176,3 +183,83 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
 
 
 app = create_rest_app()
+
+
+def create_mcp_server(settings: AppSettings | None = None) -> McpServer:
+    resolved_settings = settings or get_settings()
+    if resolved_settings.database_url is None:
+        raise ConfigurationError("MCP server requires MCP_SECRET_MANAGER_DATABASE_URL.")
+    if resolved_settings.master_key_base64 is None:
+        raise ConfigurationError("MCP server requires MCP_SECRET_MANAGER_MASTER_KEY_BASE64.")
+
+    engine = create_database_engine(resolved_settings.database_url)
+    session_factory = create_session_factory(engine)
+    unit_of_work = SqlAlchemyUnitOfWork
+    api_key_generator = SecureApiKeySecretGenerator()
+    api_key_hasher = Argon2idApiKeyHasher()
+    audit_recorder = PersistentAuditRecorder(unit_of_work(session_factory))
+    crypto_provider = AesGcmCryptoProvider.from_base64_master_key(
+        resolved_settings.master_key_base64,
+        key_version=resolved_settings.master_key_version,
+    )
+
+    authenticate_api_key_use_case = AuthenticateApiKeyUseCase(
+        unit_of_work(session_factory),
+        api_key_generator,
+        api_key_hasher,
+        audit_recorder=audit_recorder,
+    )
+    authorize_use_case = AuthorizeUseCase(
+        PermissionChecker(unit_of_work(session_factory)),
+        audit_recorder=audit_recorder,
+    )
+
+    server = McpServer(name=resolved_settings.service_name)
+    tools = SecretManagerMcpTools(
+        service_name=resolved_settings.service_name,
+        authenticate_api_key_use_case=authenticate_api_key_use_case,
+        authorize_use_case=authorize_use_case,
+        list_vaults_use_case=ListVaultsUseCase(unit_of_work(session_factory)),
+        create_vault_use_case=CreateVaultUseCase(
+            unit_of_work(session_factory),
+            audit_recorder=audit_recorder,
+        ),
+        list_projects_use_case=ListProjectsUseCase(unit_of_work(session_factory)),
+        create_project_use_case=CreateProjectUseCase(
+            unit_of_work(session_factory),
+            audit_recorder=audit_recorder,
+        ),
+        list_secrets_use_case=ListSecretsUseCase(
+            unit_of_work(session_factory),
+            audit_recorder=audit_recorder,
+        ),
+        create_secret_use_case=CreateSecretUseCase(
+            unit_of_work(session_factory),
+            audit_recorder=audit_recorder,
+        ),
+        get_secret_use_case=GetSecretUseCase(
+            unit_of_work(session_factory),
+            audit_recorder=audit_recorder,
+        ),
+        create_secret_version_use_case=CreateSecretVersionUseCase(
+            unit_of_work(session_factory),
+            EncryptSecretValueUseCase(crypto_provider),
+            audit_recorder=audit_recorder,
+        ),
+        list_secret_versions_use_case=ListSecretVersionsUseCase(
+            unit_of_work(session_factory),
+            DecryptSecretValueUseCase(crypto_provider),
+            audit_recorder=audit_recorder,
+        ),
+        get_active_secret_version_use_case=GetActiveSecretVersionUseCase(
+            unit_of_work(session_factory),
+            DecryptSecretValueUseCase(crypto_provider),
+            audit_recorder=audit_recorder,
+        ),
+        search_secrets_use_case=SearchSecretsUseCase(
+            unit_of_work(session_factory),
+            audit_recorder=audit_recorder,
+        ),
+    )
+    tools.register(server)
+    return server

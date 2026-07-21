@@ -105,6 +105,26 @@ def test_persistent_audit_recorder_creates_success_event() -> None:
         assert len(unit_of_work.repository.events) == 1
         assert unit_of_work.repository.events[0].action.value == "vault.create"
         assert unit_of_work.repository.events[0].result is AuditResult.SUCCESS
+        assert unit_of_work.repository.events[0].metadata["protocol"] == "rest"
+
+    anyio.run(run)
+
+
+def test_audit_recorder_stores_mcp_protocol_in_metadata() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryAuditUnitOfWork()
+        recorder = PersistentAuditRecorder(unit_of_work)
+
+        await record_audit_event(
+            recorder,
+            AuditContext(actor_id="actor-1", actor_type="user", protocol="mcp"),
+            action="secret.read",
+            resource_type="secret",
+            resource_id="secret-1",
+            result=AuditResult.SUCCESS,
+        )
+
+        assert unit_of_work.repository.events[0].metadata == {"protocol": "mcp"}
 
     anyio.run(run)
 

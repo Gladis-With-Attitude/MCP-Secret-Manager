@@ -240,7 +240,7 @@ def test_authorize_use_case_raises_when_permission_is_denied() -> None:
         assert event.action.value == "permission.denied"
         assert event.result.value == "FAILURE"
         assert event.actor_id == str(user_id)
-        assert event.metadata == {"permission": "vault.read"}
+        assert event.metadata == {"permission": "vault.read", "protocol": "rest"}
 
     anyio.run(run)
 

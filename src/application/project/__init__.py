@@ -6,11 +6,12 @@ from application.project.exceptions import (
     ProjectValidationError,
     VaultNotFoundError,
 )
-from application.project.use_cases import CreateProjectUseCase
+from application.project.use_cases import CreateProjectUseCase, ListProjectsUseCase
 
 __all__ = [
     "CreateProjectRequest",
     "CreateProjectUseCase",
+    "ListProjectsUseCase",
     "ProjectAlreadyExistsError",
     "ProjectResponse",
     "ProjectValidationError",

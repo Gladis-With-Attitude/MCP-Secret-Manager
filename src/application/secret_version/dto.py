@@ -11,6 +11,7 @@ from domain.secret_version.value_objects import SecretValue
 class CreateSecretVersionRequest:
     secret_id: str
     value: str
+    project_id: str | None = None
     audit_context: AuditContext | None = None
 
 

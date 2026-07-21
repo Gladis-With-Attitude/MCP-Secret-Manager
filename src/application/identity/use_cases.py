@@ -315,6 +315,7 @@ class AuthenticateApiKeyUseCase:
                 ip_address=audit_context.ip_address if audit_context is not None else None,
                 user_agent=audit_context.user_agent if audit_context is not None else None,
                 request_id=audit_context.request_id if audit_context is not None else None,
+                protocol=audit_context.protocol if audit_context is not None else "rest",
             ),
             action="login.success",
             resource_type="api_key",

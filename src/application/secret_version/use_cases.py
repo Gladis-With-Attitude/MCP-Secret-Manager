@@ -18,6 +18,8 @@ from domain.audit.repositories import AuditRecorder
 from domain.audit.value_objects import AuditResult
 from domain.crypto.entities import SecretEncryptionContext
 from domain.crypto.exceptions import CryptoProviderError
+from domain.project.value_objects import ProjectId
+from domain.secret.entities import Secret
 from domain.secret.value_objects import SecretId
 from domain.secret_version.entities import SecretVersion
 from domain.secret_version.exceptions import SecretVersionDomainError
@@ -45,6 +47,7 @@ class CreateSecretVersionUseCase:
                 secret = await unit_of_work.secrets.get(secret_id)
                 if secret is None:
                     raise SecretNotFoundError("Secret not found.")
+                self._ensure_secret_belongs_to_project(secret, request.project_id)
 
                 versions = await unit_of_work.secret_versions.list_versions(secret_id)
                 next_version = self._next_version_number(versions)
@@ -121,6 +124,21 @@ class CreateSecretVersionUseCase:
         except SecretVersionDomainError as exc:
             raise SecretVersionValidationError(str(exc)) from exc
 
+    @staticmethod
+    def _validate_project_id(raw_project_id: str) -> ProjectId:
+        try:
+            return ProjectId.from_string(raw_project_id)
+        except ValueError as exc:
+            raise SecretVersionValidationError("Project id must be a valid UUID.") from exc
+
+    @staticmethod
+    def _ensure_secret_belongs_to_project(secret: Secret, raw_project_id: str | None) -> None:
+        if raw_project_id is None:
+            return
+        project_id = CreateSecretVersionUseCase._validate_project_id(raw_project_id)
+        if secret.project_id != project_id:
+            raise SecretNotFoundError("Secret not found.")
+
 
 class ListSecretVersionsUseCase:
     def __init__(
@@ -137,6 +155,7 @@ class ListSecretVersionsUseCase:
         self,
         secret_id: str,
         audit_context: AuditContext | None = None,
+        project_id: str | None = None,
     ) -> tuple[SecretVersionResponse, ...]:
         try:
             validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
@@ -145,6 +164,7 @@ class ListSecretVersionsUseCase:
                 secret = await unit_of_work.secrets.get(validated_secret_id)
                 if secret is None:
                     raise SecretNotFoundError("Secret not found.")
+                CreateSecretVersionUseCase._ensure_secret_belongs_to_project(secret, project_id)
 
                 versions = await unit_of_work.secret_versions.list_versions(validated_secret_id)
 
@@ -195,6 +215,7 @@ class GetActiveSecretVersionUseCase:
         self,
         secret_id: str,
         audit_context: AuditContext | None = None,
+        project_id: str | None = None,
     ) -> SecretVersionResponse:
         try:
             validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
@@ -203,6 +224,7 @@ class GetActiveSecretVersionUseCase:
                 secret = await unit_of_work.secrets.get(validated_secret_id)
                 if secret is None:
                     raise SecretNotFoundError("Secret not found.")
+                CreateSecretVersionUseCase._ensure_secret_belongs_to_project(secret, project_id)
 
                 active_version = await unit_of_work.secret_versions.get_active(validated_secret_id)
                 if active_version is None:

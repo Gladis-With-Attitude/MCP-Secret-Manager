@@ -91,3 +91,17 @@ class CreateProjectUseCase:
             return ProjectName(raw_name)
         except ProjectDomainError as exc:
             raise ProjectValidationError(str(exc)) from exc
+
+
+class ListProjectsUseCase:
+    def __init__(self, unit_of_work: UnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(self, vault_id: str) -> tuple[ProjectResponse, ...]:
+        validated_vault_id = CreateProjectUseCase._validate_vault_id(vault_id)
+        async with self._unit_of_work as unit_of_work:
+            vault = await unit_of_work.vaults.get(validated_vault_id)
+            if vault is None:
+                raise VaultNotFoundError("Vault not found.")
+            projects = await unit_of_work.projects.list_by_vault(validated_vault_id)
+        return tuple(ProjectResponse.from_domain(project) for project in projects)

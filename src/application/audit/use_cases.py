@@ -43,6 +43,11 @@ async def record_audit_event(
     metadata: Mapping[str, JsonValue] | None = None,
 ) -> None:
     resolved_context = context or AuditContext()
+    resolved_metadata: dict[str, JsonValue] = {"protocol": resolved_context.protocol}
+    if resolved_context.transport is not None:
+        resolved_metadata["transport"] = resolved_context.transport
+    if metadata is not None:
+        resolved_metadata.update(metadata)
     try:
         event = AuditEvent.create(
             actor_id=resolved_context.actor_id,
@@ -54,7 +59,7 @@ async def record_audit_event(
             ip_address=resolved_context.ip_address,
             user_agent=resolved_context.user_agent,
             request_id=resolved_context.request_id,
-            metadata=metadata,
+            metadata=resolved_metadata,
         )
     except AuditDomainError as exc:
         raise AuditValidationError(str(exc)) from exc

@@ -15,6 +15,26 @@ class CreateSecretRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class GetSecretRequest:
+    project_id: str
+    secret_id: str
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ListSecretsRequest:
+    project_id: str
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SearchSecretsRequest:
+    project_id: str
+    query: str
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SecretResponse:
     id: str
     project_id: str
