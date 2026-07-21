@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from application.audit.dto import AuditContext
+from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.rbac.dto import AuthorizationDecision, RequirePermission
 from application.rbac.exceptions import AuthorizationDeniedError, RbacValidationError
 from application.rbac.unit_of_work import RbacUnitOfWork
+from domain.audit.repositories import AuditRecorder
+from domain.audit.value_objects import AuditResult
 from domain.identity.value_objects import ApiKeyOwnerType, ServiceAccountId, UserId
 from domain.rbac.entities import RoleAssignment
 from domain.rbac.exceptions import RbacDomainError
@@ -125,11 +129,31 @@ class PermissionChecker:
 
 
 class AuthorizeUseCase:
-    def __init__(self, permission_checker: PermissionChecker) -> None:
+    def __init__(
+        self,
+        permission_checker: PermissionChecker,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
         self._permission_checker = permission_checker
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
     async def execute(self, request: RequirePermission) -> AuthorizationDecision:
         allowed = await self._permission_checker.is_allowed(request)
         if not allowed:
+            await record_audit_event(
+                self._audit_recorder,
+                AuditContext(
+                    actor_id=request.identity_id,
+                    actor_type=request.identity_type,
+                    ip_address=request.ip_address,
+                    user_agent=request.user_agent,
+                    request_id=request.request_id,
+                ),
+                action="permission.denied",
+                resource_type=request.scope_type,
+                resource_id=request.scope_id,
+                result=AuditResult.FAILURE,
+                metadata={"permission": request.permission},
+            )
             raise AuthorizationDeniedError("Permission denied.")
         return AuthorizationDecision(allowed=True)

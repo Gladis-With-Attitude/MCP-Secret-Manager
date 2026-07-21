@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from application.audit.dto import AuditContext
+from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
 from application.secret_version.dto import CreateSecretVersionRequest, SecretVersionResponse
 from application.secret_version.exceptions import (
@@ -12,6 +14,8 @@ from application.secret_version.exceptions import (
     SecretVersionValidationError,
 )
 from application.unit_of_work import UnitOfWork
+from domain.audit.repositories import AuditRecorder
+from domain.audit.value_objects import AuditResult
 from domain.crypto.entities import SecretEncryptionContext
 from domain.crypto.exceptions import CryptoProviderError
 from domain.secret.value_objects import SecretId
@@ -26,46 +30,73 @@ class CreateSecretVersionUseCase:
         self,
         unit_of_work: UnitOfWork,
         encrypt_secret_value_use_case: EncryptSecretValueUseCase,
+        audit_recorder: AuditRecorder | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
         self._encrypt_secret_value_use_case = encrypt_secret_value_use_case
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
     async def execute(self, request: CreateSecretVersionRequest) -> SecretVersionResponse:
-        secret_id = self._validate_secret_id(request.secret_id)
-        value = self._validate_value(request.value)
+        try:
+            secret_id = self._validate_secret_id(request.secret_id)
+            value = self._validate_value(request.value)
 
-        async with self._unit_of_work as unit_of_work:
-            secret = await unit_of_work.secrets.get(secret_id)
-            if secret is None:
-                raise SecretNotFoundError("Secret not found.")
+            async with self._unit_of_work as unit_of_work:
+                secret = await unit_of_work.secrets.get(secret_id)
+                if secret is None:
+                    raise SecretNotFoundError("Secret not found.")
 
-            versions = await unit_of_work.secret_versions.list_versions(secret_id)
-            next_version = self._next_version_number(versions)
-            encryption_context = SecretEncryptionContext(
-                secret_id=str(secret_id),
-                version=next_version.value,
-            )
-            try:
-                encrypted_value = self._encrypt_secret_value_use_case.execute(
-                    value,
-                    encryption_context,
+                versions = await unit_of_work.secret_versions.list_versions(secret_id)
+                next_version = self._next_version_number(versions)
+                encryption_context = SecretEncryptionContext(
+                    secret_id=str(secret_id),
+                    version=next_version.value,
                 )
-            except CryptoProviderError as exc:
-                raise SecretVersionCryptoError("Secret value encryption failed.") from exc
+                try:
+                    encrypted_value = self._encrypt_secret_value_use_case.execute(
+                        value,
+                        encryption_context,
+                    )
+                except CryptoProviderError as exc:
+                    raise SecretVersionCryptoError("Secret value encryption failed.") from exc
 
-            secret_version = SecretVersion.create(
-                secret_id=secret_id,
-                encrypted_payload=encrypted_value,
-                version=next_version,
+                secret_version = SecretVersion.create(
+                    secret_id=secret_id,
+                    encrypted_payload=encrypted_value,
+                    version=next_version,
+                )
+
+                try:
+                    await unit_of_work.secret_versions.deactivate_previous_versions(secret_id)
+                    created_secret_version = await unit_of_work.secret_versions.create(
+                        secret_version
+                    )
+                except SecretVersionRepositoryConflictError as exc:
+                    raise SecretVersionConflictError(
+                        "Secret version persistence conflict."
+                    ) from exc
+
+                await unit_of_work.commit()
+        except Exception:
+            await record_audit_event(
+                self._audit_recorder,
+                request.audit_context,
+                action="secret.rotate",
+                resource_type="secret",
+                resource_id=request.secret_id,
+                result=AuditResult.FAILURE,
             )
+            raise
 
-            try:
-                await unit_of_work.secret_versions.deactivate_previous_versions(secret_id)
-                created_secret_version = await unit_of_work.secret_versions.create(secret_version)
-            except SecretVersionRepositoryConflictError as exc:
-                raise SecretVersionConflictError("Secret version persistence conflict.") from exc
-
-            await unit_of_work.commit()
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="secret.rotate",
+            resource_type="secret",
+            resource_id=str(created_secret_version.secret_id),
+            result=AuditResult.SUCCESS,
+            metadata={"version": created_secret_version.version.value},
+        )
 
         return SecretVersionResponse.from_domain(created_secret_version, value)
 
@@ -96,21 +127,49 @@ class ListSecretVersionsUseCase:
         self,
         unit_of_work: UnitOfWork,
         decrypt_secret_value_use_case: DecryptSecretValueUseCase,
+        audit_recorder: AuditRecorder | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
         self._decrypt_secret_value_use_case = decrypt_secret_value_use_case
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
-    async def execute(self, secret_id: str) -> tuple[SecretVersionResponse, ...]:
-        validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
+    async def execute(
+        self,
+        secret_id: str,
+        audit_context: AuditContext | None = None,
+    ) -> tuple[SecretVersionResponse, ...]:
+        try:
+            validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
 
-        async with self._unit_of_work as unit_of_work:
-            secret = await unit_of_work.secrets.get(validated_secret_id)
-            if secret is None:
-                raise SecretNotFoundError("Secret not found.")
+            async with self._unit_of_work as unit_of_work:
+                secret = await unit_of_work.secrets.get(validated_secret_id)
+                if secret is None:
+                    raise SecretNotFoundError("Secret not found.")
 
-            versions = await unit_of_work.secret_versions.list_versions(validated_secret_id)
+                versions = await unit_of_work.secret_versions.list_versions(validated_secret_id)
 
-        return tuple(self._to_response(version) for version in versions)
+            response = tuple(self._to_response(version) for version in versions)
+        except Exception:
+            await record_audit_event(
+                self._audit_recorder,
+                audit_context,
+                action="secret.decrypt",
+                resource_type="secret",
+                resource_id=secret_id,
+                result=AuditResult.FAILURE,
+            )
+            raise
+
+        await record_audit_event(
+            self._audit_recorder,
+            audit_context,
+            action="secret.decrypt",
+            resource_type="secret",
+            resource_id=str(validated_secret_id),
+            result=AuditResult.SUCCESS,
+            metadata={"versions_returned": len(response)},
+        )
+        return response
 
     def _to_response(self, secret_version: SecretVersion) -> SecretVersionResponse:
         try:
@@ -126,25 +185,52 @@ class GetActiveSecretVersionUseCase:
         self,
         unit_of_work: UnitOfWork,
         decrypt_secret_value_use_case: DecryptSecretValueUseCase,
+        audit_recorder: AuditRecorder | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
         self._decrypt_secret_value_use_case = decrypt_secret_value_use_case
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
-    async def execute(self, secret_id: str) -> SecretVersionResponse:
-        validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
-
-        async with self._unit_of_work as unit_of_work:
-            secret = await unit_of_work.secrets.get(validated_secret_id)
-            if secret is None:
-                raise SecretNotFoundError("Secret not found.")
-
-            active_version = await unit_of_work.secret_versions.get_active(validated_secret_id)
-            if active_version is None:
-                raise SecretVersionNotFoundError("Active secret version not found.")
-
+    async def execute(
+        self,
+        secret_id: str,
+        audit_context: AuditContext | None = None,
+    ) -> SecretVersionResponse:
         try:
-            value = self._decrypt_secret_value_use_case.execute(active_version)
-        except CryptoProviderError as exc:
-            raise SecretVersionCryptoError("Secret value decryption failed.") from exc
+            validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
+
+            async with self._unit_of_work as unit_of_work:
+                secret = await unit_of_work.secrets.get(validated_secret_id)
+                if secret is None:
+                    raise SecretNotFoundError("Secret not found.")
+
+                active_version = await unit_of_work.secret_versions.get_active(validated_secret_id)
+                if active_version is None:
+                    raise SecretVersionNotFoundError("Active secret version not found.")
+
+            try:
+                value = self._decrypt_secret_value_use_case.execute(active_version)
+            except CryptoProviderError as exc:
+                raise SecretVersionCryptoError("Secret value decryption failed.") from exc
+        except Exception:
+            await record_audit_event(
+                self._audit_recorder,
+                audit_context,
+                action="secret.decrypt",
+                resource_type="secret",
+                resource_id=secret_id,
+                result=AuditResult.FAILURE,
+            )
+            raise
+
+        await record_audit_event(
+            self._audit_recorder,
+            audit_context,
+            action="secret.decrypt",
+            resource_type="secret",
+            resource_id=str(validated_secret_id),
+            result=AuditResult.SUCCESS,
+            metadata={"version": active_version.version.value},
+        )
 
         return SecretVersionResponse.from_domain(active_version, value)

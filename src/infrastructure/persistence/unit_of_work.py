@@ -5,12 +5,14 @@ from typing import Self
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from domain.audit.repositories import AuditRepository
 from domain.identity.repositories import ApiKeyRepository, ServiceAccountRepository, UserRepository
 from domain.project.repositories import ProjectRepository
 from domain.rbac.repositories import PermissionRepository, RoleAssignmentRepository, RoleRepository
 from domain.secret.repositories import SecretRepository
 from domain.secret_version.repositories import SecretVersionRepository
 from domain.vault.repositories import VaultRepository
+from infrastructure.persistence.audit_repository import SqlAlchemyAuditRepository
 from infrastructure.persistence.identity_repositories import (
     SqlAlchemyApiKeyRepository,
     SqlAlchemyServiceAccountRepository,
@@ -41,6 +43,7 @@ class SqlAlchemyUnitOfWork:
         self._permissions: SqlAlchemyPermissionRepository | None = None
         self._roles: SqlAlchemyRoleRepository | None = None
         self._role_assignments: SqlAlchemyRoleAssignmentRepository | None = None
+        self._audits: SqlAlchemyAuditRepository | None = None
 
     @property
     def vaults(self) -> VaultRepository:
@@ -102,6 +105,12 @@ class SqlAlchemyUnitOfWork:
             raise RuntimeError("Unit of Work has not been entered.")
         return self._role_assignments
 
+    @property
+    def audits(self) -> AuditRepository:
+        if self._audits is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._audits
+
     async def __aenter__(self) -> Self:
         self._session = self._session_factory()
         self._vaults = SqlAlchemyVaultRepository(self._session)
@@ -114,6 +123,7 @@ class SqlAlchemyUnitOfWork:
         self._permissions = SqlAlchemyPermissionRepository(self._session)
         self._roles = SqlAlchemyRoleRepository(self._session)
         self._role_assignments = SqlAlchemyRoleAssignmentRepository(self._session)
+        self._audits = SqlAlchemyAuditRepository(self._session)
         return self
 
     async def __aexit__(
@@ -149,6 +159,7 @@ class SqlAlchemyUnitOfWork:
         self._permissions = None
         self._roles = None
         self._role_assignments = None
+        self._audits = None
 
     def _get_session(self) -> AsyncSession:
         if self._session is None:

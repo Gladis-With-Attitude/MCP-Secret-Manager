@@ -1,5 +1,7 @@
 """Persistence infrastructure."""
 
+from infrastructure.persistence.audit_model import AuditEventModel
+from infrastructure.persistence.audit_repository import SqlAlchemyAuditRepository
 from infrastructure.persistence.base import Base
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.identity_models import ApiKeyModel, ServiceAccountModel, UserModel
@@ -31,6 +33,7 @@ from infrastructure.persistence.vault_repository import SqlAlchemyVaultRepositor
 
 __all__ = [
     "ApiKeyModel",
+    "AuditEventModel",
     "Base",
     "PermissionModel",
     "ProjectModel",
@@ -41,6 +44,7 @@ __all__ = [
     "SecretVersionModel",
     "ServiceAccountModel",
     "SqlAlchemyApiKeyRepository",
+    "SqlAlchemyAuditRepository",
     "SqlAlchemyPermissionRepository",
     "SqlAlchemyProjectRepository",
     "SqlAlchemyRoleAssignmentRepository",

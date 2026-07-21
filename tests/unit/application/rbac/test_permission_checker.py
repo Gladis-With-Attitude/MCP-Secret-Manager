@@ -11,6 +11,7 @@ import pytest
 from application.rbac.dto import RequirePermission
 from application.rbac.exceptions import AuthorizationDeniedError
 from application.rbac.use_cases import AuthorizeUseCase, PermissionChecker
+from domain.audit.entities import AuditEvent
 from domain.identity.value_objects import ApiKeyOwnerType, ServiceAccountId, UserId
 from domain.rbac.entities import Permission, Role, RoleAssignment
 from domain.rbac.repositories import (
@@ -133,6 +134,14 @@ class InMemoryRbacUnitOfWork:
         return None
 
 
+class RecordingAuditRecorder:
+    def __init__(self) -> None:
+        self.events: list[AuditEvent] = []
+
+    async def record(self, event: AuditEvent) -> None:
+        self.events.append(event)
+
+
 async def grant_role(
     unit_of_work: InMemoryRbacUnitOfWork,
     identity_id: UserId | ServiceAccountId,
@@ -208,11 +217,30 @@ def test_authorize_use_case_raises_when_permission_is_denied() -> None:
     async def run() -> None:
         unit_of_work = InMemoryRbacUnitOfWork()
         user_id = UserId.new()
+        audit_recorder = RecordingAuditRecorder()
 
         with pytest.raises(AuthorizationDeniedError):
-            await AuthorizeUseCase(PermissionChecker(unit_of_work)).execute(
-                RequirePermission(str(user_id), "user", "vault.read", "global")
+            await AuthorizeUseCase(
+                PermissionChecker(unit_of_work),
+                audit_recorder=audit_recorder,
+            ).execute(
+                RequirePermission(
+                    str(user_id),
+                    "user",
+                    "vault.read",
+                    "global",
+                    ip_address="127.0.0.1",
+                    user_agent="test-client",
+                    request_id="req-1",
+                )
             )
+
+        assert len(audit_recorder.events) == 1
+        event = audit_recorder.events[0]
+        assert event.action.value == "permission.denied"
+        assert event.result.value == "FAILURE"
+        assert event.actor_id == str(user_id)
+        assert event.metadata == {"permission": "vault.read"}
 
     anyio.run(run)
 

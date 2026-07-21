@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from application.audit.dto import AuditEventResponse
 from application.identity.dto import (
     ApiKeyCreatedResponse,
     ServiceAccountResponse,
@@ -11,6 +12,7 @@ from application.project.dto import ProjectResponse
 from application.secret.dto import SecretResponse
 from application.secret_version.dto import SecretVersionResponse
 from application.vault.dto import VaultResponse
+from domain.audit.entities import AuditMetadata
 
 
 class CreateVaultHttpRequest(BaseModel):
@@ -173,4 +175,36 @@ class ApiKeyCreatedHttpResponse(BaseModel):
             owner_type=response.owner_type,
             expires_at=response.expires_at,
             created_at=response.created_at,
+        )
+
+
+class AuditEventHttpResponse(BaseModel):
+    id: str
+    timestamp: str
+    actor_id: str | None
+    actor_type: str
+    action: str
+    resource_type: str
+    resource_id: str | None
+    result: str
+    ip_address: str | None
+    user_agent: str | None
+    request_id: str | None
+    metadata: AuditMetadata
+
+    @classmethod
+    def from_application(cls, response: AuditEventResponse) -> AuditEventHttpResponse:
+        return cls(
+            id=response.id,
+            timestamp=response.timestamp,
+            actor_id=response.actor_id,
+            actor_type=response.actor_type,
+            action=response.action,
+            resource_type=response.resource_type,
+            resource_id=response.resource_id,
+            result=response.result,
+            ip_address=response.ip_address,
+            user_agent=response.user_agent,
+            request_id=response.request_id,
+            metadata=response.metadata,
         )

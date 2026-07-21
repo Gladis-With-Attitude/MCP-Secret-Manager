@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from application.audit.dto import AuditContext
 from domain.identity.entities import ApiKey, ServiceAccount, User
 
 
@@ -9,6 +10,7 @@ from domain.identity.entities import ApiKey, ServiceAccount, User
 class CreateUserRequest:
     email: str
     display_name: str
+    audit_context: AuditContext | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +37,7 @@ class CreateServiceAccountRequest:
     project_id: str
     name: str
     description: str | None
+    audit_context: AuditContext | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +66,7 @@ class CreateApiKeyRequest:
     owner_id: str
     owner_type: str
     expires_at: str | None
+    audit_context: AuditContext | None = None
 
 
 @dataclass(frozen=True, slots=True)

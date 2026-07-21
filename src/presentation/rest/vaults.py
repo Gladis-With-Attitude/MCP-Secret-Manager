@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from application.audit.dto import AuditContext
 from application.project.dto import CreateProjectRequest
 from application.project.exceptions import (
     ProjectAlreadyExistsError,
@@ -14,6 +15,7 @@ from application.project.use_cases import CreateProjectUseCase
 from application.vault.dto import CreateVaultRequest
 from application.vault.exceptions import VaultAlreadyExistsError, VaultValidationError
 from application.vault.use_cases import CreateVaultUseCase
+from presentation.rest.audit_context import get_audit_context
 from presentation.rest.dependencies import get_create_project_use_case, get_create_vault_use_case
 from presentation.rest.schemas import (
     CreateProjectHttpRequest,
@@ -32,6 +34,7 @@ CreateProjectUseCaseDependency = Annotated[
     CreateProjectUseCase,
     Depends(get_create_project_use_case),
 ]
+AuditContextDependency = Annotated[AuditContext, Depends(get_audit_context)]
 
 
 @router.post(
@@ -46,9 +49,12 @@ CreateProjectUseCaseDependency = Annotated[
 async def create_vault(
     payload: CreateVaultHttpRequest,
     use_case: CreateVaultUseCaseDependency,
+    audit_context: AuditContextDependency,
 ) -> VaultHttpResponse:
     try:
-        response = await use_case.execute(CreateVaultRequest(name=payload.name))
+        response = await use_case.execute(
+            CreateVaultRequest(name=payload.name, audit_context=audit_context)
+        )
     except VaultValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except VaultAlreadyExistsError as exc:
@@ -71,10 +77,11 @@ async def create_project(
     vault_id: str,
     payload: CreateProjectHttpRequest,
     use_case: CreateProjectUseCaseDependency,
+    audit_context: AuditContextDependency,
 ) -> ProjectHttpResponse:
     try:
         response = await use_case.execute(
-            CreateProjectRequest(vault_id=vault_id, name=payload.name)
+            CreateProjectRequest(vault_id=vault_id, name=payload.name, audit_context=audit_context)
         )
     except ProjectValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

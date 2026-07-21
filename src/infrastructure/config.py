@@ -28,6 +28,7 @@ class AppSettings(BaseSettings):
     rest_host: str = "127.0.0.1"
     rest_port: int = Field(default=8000, ge=1, le=65535)
     openapi_enabled: bool = True
+    audit_retention_days: int = Field(default=365, ge=1)
 
     def validate_runtime(self) -> None:
         if self.environment != "production":

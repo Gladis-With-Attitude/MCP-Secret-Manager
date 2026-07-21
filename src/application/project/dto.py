@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from application.audit.dto import AuditContext
 from domain.project.entities import Project
 
 
@@ -9,6 +10,7 @@ from domain.project.entities import Project
 class CreateProjectRequest:
     vault_id: str
     name: str
+    audit_context: AuditContext | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request, status
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from application.audit.dto import AuditContext
 from application.identity.dto import AuthenticatedIdentityResponse
 from application.identity.exceptions import AuthenticationFailedError
 from application.identity.use_cases import AuthenticateApiKeyUseCase
@@ -42,6 +44,7 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
         call_next: RequestResponseEndpoint,
     ) -> Response:
         request.state.authenticated_identity = None
+        request.state.request_id = request.headers.get("X-Request-ID") or str(uuid4())
         authorization = request.headers.get("Authorization")
         if authorization is None:
             return await call_next(request)
@@ -59,8 +62,18 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
             )
 
         raw_api_key = authorization.removeprefix("Bearer ").strip()
+        client_host = request.client.host if request.client is not None else None
+        audit_context = AuditContext(
+            actor_type="anonymous",
+            ip_address=client_host,
+            user_agent=request.headers.get("User-Agent"),
+            request_id=request.state.request_id,
+        )
         try:
-            authenticated = await self._authenticate_api_key_use_case.execute(raw_api_key)
+            authenticated = await self._authenticate_api_key_use_case.execute(
+                raw_api_key,
+                audit_context=audit_context,
+            )
         except AuthenticationFailedError:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,

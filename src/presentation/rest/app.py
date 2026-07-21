@@ -7,6 +7,7 @@ from starlette.types import Lifespan
 
 from application.health import get_liveness_status
 from application.identity.use_cases import AuthenticateApiKeyUseCase
+from presentation.rest.audit import router as audit_router
 from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
 from presentation.rest.identity import router as identity_router
 from presentation.rest.projects import router as projects_router
@@ -50,6 +51,7 @@ def create_app(
     app.include_router(projects_router)
     app.include_router(secrets_router)
     app.include_router(identity_router)
+    app.include_router(audit_router)
     app.add_middleware(
         ApiKeyAuthenticationMiddleware,
         authenticate_api_key_use_case=authenticate_api_key_use_case,

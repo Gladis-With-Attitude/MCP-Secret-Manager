@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from application.audit.dto import AuditContext
+from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.identity.dto import (
     ApiKeyCreatedResponse,
     AuthenticatedIdentityResponse,
@@ -18,6 +20,8 @@ from application.identity.exceptions import (
     IdentityValidationError,
 )
 from application.identity.unit_of_work import IdentityUnitOfWork
+from domain.audit.repositories import AuditRecorder
+from domain.audit.value_objects import AuditResult
 from domain.identity.entities import ApiKey, ServiceAccount, User
 from domain.identity.exceptions import IdentityDomainError
 from domain.identity.repositories import (
@@ -123,35 +127,63 @@ class CreateApiKeyUseCase:
         unit_of_work: IdentityUnitOfWork,
         api_key_generator: ApiKeySecretGenerator,
         api_key_hasher: ApiKeyHasher,
+        audit_recorder: AuditRecorder | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
         self._api_key_generator = api_key_generator
         self._api_key_hasher = api_key_hasher
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
     async def execute(self, request: CreateApiKeyRequest) -> ApiKeyCreatedResponse:
-        owner_type = self._validate_owner_type(request.owner_type)
-        owner_id = self._validate_owner_id(request.owner_id, owner_type)
-        expires_at = self._validate_expires_at(request.expires_at)
-        raw_api_key = self._api_key_generator.generate()
-        key_prefix = self._api_key_generator.extract_prefix(raw_api_key)
-        if key_prefix is None:
-            raise IdentityValidationError("Generated API key prefix is invalid.")
-        hashed_key = self._api_key_hasher.hash(raw_api_key)
+        try:
+            owner_type = self._validate_owner_type(request.owner_type)
+            owner_id = self._validate_owner_id(request.owner_id, owner_type)
+            expires_at = self._validate_expires_at(request.expires_at)
+            raw_api_key = self._api_key_generator.generate()
+            key_prefix = self._api_key_generator.extract_prefix(raw_api_key)
+            if key_prefix is None:
+                raise IdentityValidationError("Generated API key prefix is invalid.")
+            hashed_key = self._api_key_hasher.hash(raw_api_key)
 
-        async with self._unit_of_work as unit_of_work:
-            await self._ensure_active_owner(unit_of_work, owner_id, owner_type)
-            api_key = ApiKey.create(
-                hashed_key=hashed_key,
-                key_prefix=key_prefix,
-                owner_id=owner_id,
-                owner_type=owner_type,
-                expires_at=expires_at,
+            async with self._unit_of_work as unit_of_work:
+                await self._ensure_active_owner(unit_of_work, owner_id, owner_type)
+                api_key = ApiKey.create(
+                    hashed_key=hashed_key,
+                    key_prefix=key_prefix,
+                    owner_id=owner_id,
+                    owner_type=owner_type,
+                    expires_at=expires_at,
+                )
+                try:
+                    created = await unit_of_work.api_keys.create(api_key)
+                except ApiKeyRepositoryConflictError as exc:
+                    raise IdentityConflictError("API key persistence conflict.") from exc
+                await unit_of_work.commit()
+        except Exception:
+            await record_audit_event(
+                self._audit_recorder,
+                request.audit_context,
+                action="apikey.create",
+                resource_type="api_key",
+                resource_id=None,
+                result=AuditResult.FAILURE,
+                metadata={"owner_id": request.owner_id, "owner_type": request.owner_type},
             )
-            try:
-                created = await unit_of_work.api_keys.create(api_key)
-            except ApiKeyRepositoryConflictError as exc:
-                raise IdentityConflictError("API key persistence conflict.") from exc
-            await unit_of_work.commit()
+            raise
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="apikey.create",
+            resource_type="api_key",
+            resource_id=str(created.id),
+            result=AuditResult.SUCCESS,
+            metadata={
+                "owner_id": str(created.owner_id),
+                "owner_type": created.owner_type.value,
+                "key_prefix": created.key_prefix,
+            },
+        )
 
         return ApiKeyCreatedResponse.from_domain(created, raw_api_key)
 
@@ -217,34 +249,78 @@ class AuthenticateApiKeyUseCase:
         unit_of_work: IdentityUnitOfWork,
         api_key_generator: ApiKeySecretGenerator,
         api_key_hasher: ApiKeyHasher,
+        audit_recorder: AuditRecorder | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
         self._api_key_generator = api_key_generator
         self._api_key_hasher = api_key_hasher
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
-    async def execute(self, raw_api_key: str) -> AuthenticatedIdentityResponse:
+    async def execute(
+        self,
+        raw_api_key: str,
+        audit_context: AuditContext | None = None,
+    ) -> AuthenticatedIdentityResponse:
         key_prefix = self._api_key_generator.extract_prefix(raw_api_key)
         if key_prefix is None:
+            await record_audit_event(
+                self._audit_recorder,
+                audit_context,
+                action="login.failure",
+                resource_type="api_key",
+                resource_id=None,
+                result=AuditResult.FAILURE,
+                metadata={"reason": "invalid_prefix"},
+            )
             raise AuthenticationFailedError("Invalid API key.")
 
-        async with self._unit_of_work as unit_of_work:
-            api_key = await unit_of_work.api_keys.get_by_prefix(key_prefix)
-            if api_key is None:
-                raise AuthenticationFailedError("Invalid API key.")
-            if not self._api_key_hasher.verify(raw_api_key, api_key.hashed_key):
-                raise AuthenticationFailedError("Invalid API key.")
-            if api_key.is_revoked():
-                raise AuthenticationFailedError("Invalid API key.")
-            if api_key.is_expired(datetime.now(UTC)):
-                raise AuthenticationFailedError("Invalid API key.")
-            await CreateApiKeyUseCase._ensure_active_owner(
-                unit_of_work,
-                api_key.owner_id,
-                api_key.owner_type,
+        try:
+            async with self._unit_of_work as unit_of_work:
+                api_key = await unit_of_work.api_keys.get_by_prefix(key_prefix)
+                if api_key is None:
+                    raise AuthenticationFailedError("Invalid API key.")
+                if not self._api_key_hasher.verify(raw_api_key, api_key.hashed_key):
+                    raise AuthenticationFailedError("Invalid API key.")
+                if api_key.is_revoked():
+                    raise AuthenticationFailedError("Invalid API key.")
+                if api_key.is_expired(datetime.now(UTC)):
+                    raise AuthenticationFailedError("Invalid API key.")
+                await CreateApiKeyUseCase._ensure_active_owner(
+                    unit_of_work,
+                    api_key.owner_id,
+                    api_key.owner_type,
+                )
+        except Exception:
+            await record_audit_event(
+                self._audit_recorder,
+                audit_context,
+                action="login.failure",
+                resource_type="api_key",
+                resource_id=None,
+                result=AuditResult.FAILURE,
+                metadata={"key_prefix": key_prefix},
             )
+            raise
 
-        return AuthenticatedIdentityResponse(
+        authenticated = AuthenticatedIdentityResponse(
             id=str(api_key.owner_id),
             type=api_key.owner_type.value,
             api_key_id=str(api_key.id),
         )
+        await record_audit_event(
+            self._audit_recorder,
+            AuditContext(
+                actor_id=authenticated.id,
+                actor_type=authenticated.type,
+                ip_address=audit_context.ip_address if audit_context is not None else None,
+                user_agent=audit_context.user_agent if audit_context is not None else None,
+                request_id=audit_context.request_id if audit_context is not None else None,
+            ),
+            action="login.success",
+            resource_type="api_key",
+            resource_id=authenticated.api_key_id,
+            result=AuditResult.SUCCESS,
+            metadata={"key_prefix": api_key.key_prefix},
+        )
+
+        return authenticated

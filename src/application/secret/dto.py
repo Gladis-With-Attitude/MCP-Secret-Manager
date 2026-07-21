@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from application.audit.dto import AuditContext
 from domain.secret.entities import Secret
 
 
@@ -10,6 +11,7 @@ class CreateSecretRequest:
     project_id: str
     key: str
     description: str | None = None
+    audit_context: AuditContext | None = None
 
 
 @dataclass(frozen=True, slots=True)

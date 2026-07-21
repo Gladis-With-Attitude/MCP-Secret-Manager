@@ -7,6 +7,7 @@ import anyio
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from application.audit.dto import AuditContext
 from application.identity.dto import (
     ApiKeyCreatedResponse,
     AuthenticatedIdentityResponse,
@@ -64,7 +65,12 @@ class FakeCreateApiKeyUseCase:
 
 
 class FakeAuthenticateApiKeyUseCase:
-    async def execute(self, raw_api_key: str) -> AuthenticatedIdentityResponse:
+    async def execute(
+        self,
+        raw_api_key: str,
+        audit_context: AuditContext | None = None,
+    ) -> AuthenticatedIdentityResponse:
+        assert audit_context is not None
         if raw_api_key != "valid-api-key":
             raise AuthenticationFailedError("Invalid API key.")
         return AuthenticatedIdentityResponse(

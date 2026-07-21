@@ -12,6 +12,9 @@ class RequirePermission:
     scope_id: str | None = None
     parent_vault_id: str | None = None
     parent_project_id: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    request_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

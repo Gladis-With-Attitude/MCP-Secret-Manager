@@ -33,6 +33,13 @@ async def get_authorize_use_case() -> NoReturn:
     )
 
 
+async def get_list_audit_events_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Audit persistence is not configured.",
+    )
+
+
 async def get_create_vault_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

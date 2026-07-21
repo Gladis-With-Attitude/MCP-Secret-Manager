@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from application.audit.dto import AuditContext
 from application.secret_version.dto import CreateSecretVersionRequest
 from application.secret_version.exceptions import (
     SecretNotFoundError,
@@ -17,6 +18,7 @@ from application.secret_version.use_cases import (
     GetActiveSecretVersionUseCase,
     ListSecretVersionsUseCase,
 )
+from presentation.rest.audit_context import get_audit_context
 from presentation.rest.dependencies import (
     get_active_secret_version_use_case,
     get_create_secret_version_use_case,
@@ -41,6 +43,7 @@ GetActiveSecretVersionUseCaseDependency = Annotated[
     GetActiveSecretVersionUseCase,
     Depends(get_active_secret_version_use_case),
 ]
+AuditContextDependency = Annotated[AuditContext, Depends(get_audit_context)]
 
 
 @router.post(
@@ -58,10 +61,15 @@ async def create_secret_version(
     secret_id: str,
     payload: CreateSecretVersionHttpRequest,
     use_case: CreateSecretVersionUseCaseDependency,
+    audit_context: AuditContextDependency,
 ) -> SecretVersionHttpResponse:
     try:
         response = await use_case.execute(
-            CreateSecretVersionRequest(secret_id=secret_id, value=payload.value)
+            CreateSecretVersionRequest(
+                secret_id=secret_id,
+                value=payload.value,
+                audit_context=audit_context,
+            )
         )
     except SecretVersionValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -90,9 +98,10 @@ async def create_secret_version(
 async def list_secret_versions(
     secret_id: str,
     use_case: ListSecretVersionsUseCaseDependency,
+    audit_context: AuditContextDependency,
 ) -> list[SecretVersionHttpResponse]:
     try:
-        response = await use_case.execute(secret_id)
+        response = await use_case.execute(secret_id, audit_context=audit_context)
     except SecretVersionValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except SecretNotFoundError as exc:
@@ -118,9 +127,10 @@ async def list_secret_versions(
 async def get_latest_secret_version(
     secret_id: str,
     use_case: GetActiveSecretVersionUseCaseDependency,
+    audit_context: AuditContextDependency,
 ) -> SecretVersionHttpResponse:
     try:
-        response = await use_case.execute(secret_id)
+        response = await use_case.execute(secret_id, audit_context=audit_context)
     except SecretVersionValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except (SecretNotFoundError, SecretVersionNotFoundError) as exc:

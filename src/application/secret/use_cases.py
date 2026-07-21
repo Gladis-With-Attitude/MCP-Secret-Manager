@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.secret.dto import CreateSecretRequest, SecretResponse
 from application.secret.exceptions import (
     ProjectNotFoundError,
@@ -7,6 +8,8 @@ from application.secret.exceptions import (
     SecretValidationError,
 )
 from application.unit_of_work import UnitOfWork
+from domain.audit.repositories import AuditRecorder
+from domain.audit.value_objects import AuditResult
 from domain.project.value_objects import ProjectId
 from domain.secret.entities import Secret
 from domain.secret.exceptions import SecretDomainError
@@ -15,34 +18,64 @@ from domain.secret.value_objects import SecretDescription, SecretKey
 
 
 class CreateSecretUseCase:
-    def __init__(self, unit_of_work: UnitOfWork) -> None:
+    def __init__(
+        self,
+        unit_of_work: UnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
         self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
     async def execute(self, request: CreateSecretRequest) -> SecretResponse:
-        project_id = self._validate_project_id(request.project_id)
-        key = self._validate_key(request.key)
-        description = SecretDescription(request.description)
+        try:
+            project_id = self._validate_project_id(request.project_id)
+            key = self._validate_key(request.key)
+            description = SecretDescription(request.description)
 
-        async with self._unit_of_work as unit_of_work:
-            project = await unit_of_work.projects.get(project_id)
-            if project is None:
-                raise ProjectNotFoundError("Project not found.")
+            async with self._unit_of_work as unit_of_work:
+                project = await unit_of_work.projects.get(project_id)
+                if project is None:
+                    raise ProjectNotFoundError("Project not found.")
 
-            if await unit_of_work.secrets.exists_in_project(project_id, key):
-                raise SecretAlreadyExistsError(
-                    "A secret with this key already exists in this project."
-                )
+                if await unit_of_work.secrets.exists_in_project(project_id, key):
+                    raise SecretAlreadyExistsError(
+                        "A secret with this key already exists in this project."
+                    )
 
-            secret = Secret.create(project_id=project_id, key=key, description=description)
+                secret = Secret.create(project_id=project_id, key=key, description=description)
 
-            try:
-                created_secret = await unit_of_work.secrets.create(secret)
-            except SecretRepositoryConflictError as exc:
-                raise SecretAlreadyExistsError(
-                    "A secret with this key already exists in this project."
-                ) from exc
+                try:
+                    created_secret = await unit_of_work.secrets.create(secret)
+                except SecretRepositoryConflictError as exc:
+                    raise SecretAlreadyExistsError(
+                        "A secret with this key already exists in this project."
+                    ) from exc
 
-            await unit_of_work.commit()
+                await unit_of_work.commit()
+        except Exception:
+            await record_audit_event(
+                self._audit_recorder,
+                request.audit_context,
+                action="secret.create",
+                resource_type="secret",
+                resource_id=None,
+                result=AuditResult.FAILURE,
+                metadata={"project_id": request.project_id, "key": request.key},
+            )
+            raise
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="secret.create",
+            resource_type="secret",
+            resource_id=str(created_secret.id),
+            result=AuditResult.SUCCESS,
+            metadata={
+                "project_id": str(created_secret.project_id),
+                "key": created_secret.key.value,
+            },
+        )
 
         return SecretResponse.from_domain(created_secret)
 

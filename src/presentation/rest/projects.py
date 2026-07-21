@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from application.audit.dto import AuditContext
 from application.secret.dto import CreateSecretRequest
 from application.secret.exceptions import (
     ProjectNotFoundError,
@@ -11,6 +12,7 @@ from application.secret.exceptions import (
     SecretValidationError,
 )
 from application.secret.use_cases import CreateSecretUseCase
+from presentation.rest.audit_context import get_audit_context
 from presentation.rest.dependencies import get_create_secret_use_case
 from presentation.rest.schemas import CreateSecretHttpRequest, SecretHttpResponse
 
@@ -20,6 +22,7 @@ CreateSecretUseCaseDependency = Annotated[
     CreateSecretUseCase,
     Depends(get_create_secret_use_case),
 ]
+AuditContextDependency = Annotated[AuditContext, Depends(get_audit_context)]
 
 
 @router.post(
@@ -36,6 +39,7 @@ async def create_secret(
     project_id: str,
     payload: CreateSecretHttpRequest,
     use_case: CreateSecretUseCaseDependency,
+    audit_context: AuditContextDependency,
 ) -> SecretHttpResponse:
     try:
         response = await use_case.execute(
@@ -43,6 +47,7 @@ async def create_secret(
                 project_id=project_id,
                 key=payload.key,
                 description=payload.description,
+                audit_context=audit_context,
             )
         )
     except SecretValidationError as exc:

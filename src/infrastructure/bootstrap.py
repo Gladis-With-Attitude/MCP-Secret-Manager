@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from application.audit.use_cases import ListAuditEventsUseCase, PersistentAuditRecorder
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
 from application.identity.use_cases import (
     AuthenticateApiKeyUseCase,
@@ -37,6 +38,7 @@ from presentation.rest.dependencies import (
     get_create_service_account_use_case,
     get_create_user_use_case,
     get_create_vault_use_case,
+    get_list_audit_events_use_case,
     get_list_secret_versions_use_case,
 )
 
@@ -53,11 +55,17 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     session_factory = create_session_factory(engine) if engine is not None else None
     api_key_generator = SecureApiKeySecretGenerator()
     api_key_hasher = Argon2idApiKeyHasher()
+    audit_recorder = (
+        PersistentAuditRecorder(SqlAlchemyUnitOfWork(session_factory))
+        if session_factory is not None
+        else None
+    )
     authenticate_api_key_use_case = (
         AuthenticateApiKeyUseCase(
             SqlAlchemyUnitOfWork(session_factory),
             api_key_generator,
             api_key_hasher,
+            audit_recorder=audit_recorder,
         )
         if session_factory is not None
         else None
@@ -85,7 +93,10 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
         def create_vault_use_case() -> CreateVaultUseCase:
-            return CreateVaultUseCase(SqlAlchemyUnitOfWork(session_factory))
+            return CreateVaultUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
 
         def create_user_use_case() -> CreateUserUseCase:
             return CreateUserUseCase(SqlAlchemyUnitOfWork(session_factory))
@@ -98,33 +109,49 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 SqlAlchemyUnitOfWork(session_factory),
                 api_key_generator,
                 api_key_hasher,
+                audit_recorder=audit_recorder,
             )
 
         def authorize_use_case() -> AuthorizeUseCase:
-            return AuthorizeUseCase(PermissionChecker(SqlAlchemyUnitOfWork(session_factory)))
+            return AuthorizeUseCase(
+                PermissionChecker(SqlAlchemyUnitOfWork(session_factory)),
+                audit_recorder=audit_recorder,
+            )
+
+        def list_audit_events_use_case() -> ListAuditEventsUseCase:
+            return ListAuditEventsUseCase(SqlAlchemyUnitOfWork(session_factory))
 
         def create_project_use_case() -> CreateProjectUseCase:
-            return CreateProjectUseCase(SqlAlchemyUnitOfWork(session_factory))
+            return CreateProjectUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
 
         def create_secret_use_case() -> CreateSecretUseCase:
-            return CreateSecretUseCase(SqlAlchemyUnitOfWork(session_factory))
+            return CreateSecretUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
 
         def create_secret_version_use_case() -> CreateSecretVersionUseCase:
             return CreateSecretVersionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
                 EncryptSecretValueUseCase(crypto_provider),
+                audit_recorder=audit_recorder,
             )
 
         def list_secret_versions_use_case() -> ListSecretVersionsUseCase:
             return ListSecretVersionsUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
                 DecryptSecretValueUseCase(crypto_provider),
+                audit_recorder=audit_recorder,
             )
 
         def build_active_secret_version_use_case() -> GetActiveSecretVersionUseCase:
             return GetActiveSecretVersionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
                 DecryptSecretValueUseCase(crypto_provider),
+                audit_recorder=audit_recorder,
             )
 
         app.dependency_overrides[get_create_vault_use_case] = create_vault_use_case
@@ -134,6 +161,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         )
         app.dependency_overrides[get_create_api_key_use_case] = create_api_key_use_case
         app.dependency_overrides[get_authorize_use_case] = authorize_use_case
+        app.dependency_overrides[get_list_audit_events_use_case] = list_audit_events_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case
         app.dependency_overrides[get_create_secret_use_case] = create_secret_use_case
         app.dependency_overrides[get_create_secret_version_use_case] = (

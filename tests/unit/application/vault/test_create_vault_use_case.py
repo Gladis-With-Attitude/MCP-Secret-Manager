@@ -7,10 +7,12 @@ from typing import Self
 import anyio
 import pytest
 
+from application.audit.dto import AuditContext
 from application.unit_of_work import UnitOfWork
 from application.vault.dto import CreateVaultRequest
 from application.vault.exceptions import VaultAlreadyExistsError, VaultValidationError
 from application.vault.use_cases import CreateVaultUseCase
+from domain.audit.entities import AuditEvent
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectId, ProjectName
@@ -141,6 +143,14 @@ class InMemoryUnitOfWork:
         self.rolled_back = True
 
 
+class RecordingAuditRecorder:
+    def __init__(self) -> None:
+        self.events: list[AuditEvent] = []
+
+    async def record(self, event: AuditEvent) -> None:
+        self.events.append(event)
+
+
 async def create_vault(name: str, unit_of_work: UnitOfWork) -> str:
     use_case = CreateVaultUseCase(unit_of_work)
 
@@ -173,6 +183,54 @@ def test_create_vault_use_case_rejects_invalid_name() -> None:
         assert repository.create_calls == 0
         assert unit_of_work.committed is False
         assert unit_of_work.rolled_back is False
+
+    anyio.run(run)
+
+
+def test_create_vault_use_case_records_success_audit_event() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        audit_recorder = RecordingAuditRecorder()
+        use_case = CreateVaultUseCase(unit_of_work, audit_recorder=audit_recorder)
+
+        await use_case.execute(
+            CreateVaultRequest(
+                name="Production",
+                audit_context=AuditContext(actor_id="actor-1", actor_type="user"),
+            )
+        )
+
+        assert len(audit_recorder.events) == 1
+        event = audit_recorder.events[0]
+        assert event.action.value == "vault.create"
+        assert event.result.value == "SUCCESS"
+        assert event.actor_id == "actor-1"
+        assert event.resource_id is not None
+
+    anyio.run(run)
+
+
+def test_create_vault_use_case_records_failure_audit_event() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        audit_recorder = RecordingAuditRecorder()
+        use_case = CreateVaultUseCase(unit_of_work, audit_recorder=audit_recorder)
+
+        with pytest.raises(VaultValidationError):
+            await use_case.execute(
+                CreateVaultRequest(
+                    name="ab",
+                    audit_context=AuditContext(actor_id="actor-1", actor_type="user"),
+                )
+            )
+
+        assert len(audit_recorder.events) == 1
+        event = audit_recorder.events[0]
+        assert event.action.value == "vault.create"
+        assert event.result.value == "FAILURE"
+        assert event.resource_id is None
 
     anyio.run(run)
 

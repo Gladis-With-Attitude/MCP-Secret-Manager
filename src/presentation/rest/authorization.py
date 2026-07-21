@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 
 from application.rbac.dto import RequirePermission
 from application.rbac.exceptions import AuthorizationDeniedError, RbacValidationError
@@ -24,11 +24,16 @@ def permission_required(
     scope_id: str | None = None,
     parent_vault_id: str | None = None,
     parent_project_id: str | None = None,
-) -> Callable[[AuthenticatedIdentityDependency, AuthorizeUseCaseDependency], Awaitable[None]]:
+) -> Callable[..., Awaitable[None]]:
     async def dependency(
+        request: Request,
         identity: AuthenticatedIdentityDependency,
         use_case: AuthorizeUseCaseDependency,
     ) -> None:
+        request_id = getattr(request.state, "request_id", None)
+        if not isinstance(request_id, str):
+            request_id = request.headers.get("X-Request-ID")
+        client_host = request.client.host if request.client is not None else None
         try:
             await use_case.execute(
                 RequirePermission(
@@ -39,6 +44,9 @@ def permission_required(
                     scope_id=scope_id,
                     parent_vault_id=parent_vault_id,
                     parent_project_id=parent_project_id,
+                    ip_address=client_host,
+                    user_agent=request.headers.get("User-Agent"),
+                    request_id=request_id,
                 )
             )
         except RbacValidationError as exc:

@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from application.audit.dto import AuditContext
 from application.identity.dto import (
     CreateApiKeyRequest,
     CreateServiceAccountRequest,
@@ -19,6 +20,7 @@ from application.identity.use_cases import (
     CreateServiceAccountUseCase,
     CreateUserUseCase,
 )
+from presentation.rest.audit_context import get_audit_context
 from presentation.rest.authentication import (
     AuthenticatedIdentity,
     get_optional_authenticated_identity,
@@ -52,6 +54,7 @@ OptionalIdentityDependency = Annotated[
     AuthenticatedIdentity | None,
     Depends(get_optional_authenticated_identity),
 ]
+AuditContextDependency = Annotated[AuditContext, Depends(get_audit_context)]
 
 
 @router.post(
@@ -66,11 +69,16 @@ OptionalIdentityDependency = Annotated[
 async def create_user(
     payload: CreateUserHttpRequest,
     use_case: CreateUserUseCaseDependency,
+    audit_context: AuditContextDependency,
     _identity: OptionalIdentityDependency,
 ) -> UserHttpResponse:
     try:
         response = await use_case.execute(
-            CreateUserRequest(email=payload.email, display_name=payload.display_name)
+            CreateUserRequest(
+                email=payload.email,
+                display_name=payload.display_name,
+                audit_context=audit_context,
+            )
         )
     except IdentityValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -93,6 +101,7 @@ async def create_user(
 async def create_service_account(
     payload: CreateServiceAccountHttpRequest,
     use_case: CreateServiceAccountUseCaseDependency,
+    audit_context: AuditContextDependency,
     _identity: OptionalIdentityDependency,
 ) -> ServiceAccountHttpResponse:
     try:
@@ -101,6 +110,7 @@ async def create_service_account(
                 project_id=payload.project_id,
                 name=payload.name,
                 description=payload.description,
+                audit_context=audit_context,
             )
         )
     except IdentityValidationError as exc:
@@ -126,6 +136,7 @@ async def create_service_account(
 async def create_api_key(
     payload: CreateApiKeyHttpRequest,
     use_case: CreateApiKeyUseCaseDependency,
+    audit_context: AuditContextDependency,
     _identity: OptionalIdentityDependency,
 ) -> ApiKeyCreatedHttpResponse:
     try:
@@ -134,6 +145,7 @@ async def create_api_key(
                 owner_id=payload.owner_id,
                 owner_type=payload.owner_type,
                 expires_at=payload.expires_at,
+                audit_context=audit_context,
             )
         )
     except IdentityValidationError as exc:

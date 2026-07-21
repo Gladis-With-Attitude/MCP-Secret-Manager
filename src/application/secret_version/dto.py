@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from application.audit.dto import AuditContext
 from domain.secret_version.entities import SecretVersion
 from domain.secret_version.value_objects import SecretValue
 
@@ -10,6 +11,7 @@ from domain.secret_version.value_objects import SecretValue
 class CreateSecretVersionRequest:
     secret_id: str
     value: str
+    audit_context: AuditContext | None = None
 
 
 @dataclass(frozen=True, slots=True)
