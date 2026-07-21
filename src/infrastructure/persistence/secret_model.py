@@ -14,6 +14,7 @@ from infrastructure.persistence.base import Base
 
 if TYPE_CHECKING:
     from infrastructure.persistence.project_model import ProjectModel
+    from infrastructure.persistence.secret_version_model import SecretVersionModel
 
 
 class SecretModel(Base):
@@ -38,6 +39,10 @@ class SecretModel(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     project: Mapped[ProjectModel] = relationship("ProjectModel", back_populates="secrets")
+    versions: Mapped[list[SecretVersionModel]] = relationship(
+        "SecretVersionModel",
+        back_populates="secret",
+    )
 
     @classmethod
     def from_domain(cls, secret: Secret) -> SecretModel:

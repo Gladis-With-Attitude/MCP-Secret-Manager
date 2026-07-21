@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 from application.project.dto import ProjectResponse
 from application.secret.dto import SecretResponse
+from application.secret_version.dto import SecretVersionResponse
 from application.vault.dto import VaultResponse
 
 
@@ -58,4 +59,30 @@ class SecretHttpResponse(BaseModel):
             project_id=response.project_id,
             key=response.key,
             description=response.description,
+        )
+
+
+class CreateSecretVersionHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+
+
+class SecretVersionHttpResponse(BaseModel):
+    id: str
+    secret_id: str
+    value: str
+    version: int
+    active: bool
+    created_at: str
+
+    @classmethod
+    def from_application(cls, response: SecretVersionResponse) -> SecretVersionHttpResponse:
+        return cls(
+            id=response.id,
+            secret_id=response.secret_id,
+            value=response.value,
+            version=response.version,
+            active=response.active,
+            created_at=response.created_at,
         )

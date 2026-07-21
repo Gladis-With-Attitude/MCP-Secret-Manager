@@ -5,6 +5,7 @@ from typing import Protocol
 
 from domain.project.repositories import ProjectRepository
 from domain.secret.repositories import SecretRepository
+from domain.secret_version.repositories import SecretVersionRepository
 from domain.vault.repositories import VaultRepository
 
 
@@ -19,6 +20,10 @@ class UnitOfWork(Protocol):
 
     @property
     def secrets(self) -> SecretRepository:
+        raise NotImplementedError
+
+    @property
+    def secret_versions(self) -> SecretVersionRepository:
         raise NotImplementedError
 
     async def __aenter__(self) -> UnitOfWork:

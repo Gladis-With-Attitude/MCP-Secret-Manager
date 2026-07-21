@@ -17,6 +17,12 @@ from domain.project.value_objects import ProjectId, ProjectName
 from domain.secret.entities import Secret
 from domain.secret.repositories import SecretRepository, SecretRepositoryConflictError
 from domain.secret.value_objects import SecretId, SecretKey
+from domain.secret_version.entities import SecretVersion
+from domain.secret_version.repositories import (
+    SecretVersionRepository,
+    SecretVersionRepositoryConflictError,
+)
+from domain.secret_version.value_objects import SecretVersionId
 from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
@@ -72,11 +78,31 @@ class InMemorySecretRepository:
         return False
 
 
+class InMemorySecretVersionRepository:
+    async def create(self, _secret_version: SecretVersion) -> SecretVersion:
+        raise SecretVersionRepositoryConflictError(
+            "SecretVersion repository is not used in Vault tests."
+        )
+
+    async def get(self, _secret_version_id: SecretVersionId) -> SecretVersion | None:
+        return None
+
+    async def list_versions(self, _secret_id: SecretId) -> Sequence[SecretVersion]:
+        return ()
+
+    async def get_active(self, _secret_id: SecretId) -> SecretVersion | None:
+        return None
+
+    async def deactivate_previous_versions(self, _secret_id: SecretId) -> None:
+        return None
+
+
 class InMemoryUnitOfWork:
     def __init__(self, repository: VaultRepository) -> None:
         self._repository = repository
         self._projects = InMemoryProjectRepository()
         self._secrets = InMemorySecretRepository()
+        self._secret_versions = InMemorySecretVersionRepository()
         self.committed = False
         self.rolled_back = False
 
@@ -91,6 +117,10 @@ class InMemoryUnitOfWork:
     @property
     def secrets(self) -> SecretRepository:
         return self._secrets
+
+    @property
+    def secret_versions(self) -> SecretVersionRepository:
+        return self._secret_versions
 
     async def __aenter__(self) -> Self:
         return self

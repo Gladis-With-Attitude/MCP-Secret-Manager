@@ -7,15 +7,23 @@ from fastapi import FastAPI
 
 from application.project.use_cases import CreateProjectUseCase
 from application.secret.use_cases import CreateSecretUseCase
+from application.secret_version.use_cases import (
+    CreateSecretVersionUseCase,
+    GetActiveSecretVersionUseCase,
+    ListSecretVersionsUseCase,
+)
 from application.vault.use_cases import CreateVaultUseCase
 from infrastructure.config import AppSettings, get_settings
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from presentation.rest.app import create_app
 from presentation.rest.dependencies import (
+    get_active_secret_version_use_case,
     get_create_project_use_case,
     get_create_secret_use_case,
+    get_create_secret_version_use_case,
     get_create_vault_use_case,
+    get_list_secret_versions_use_case,
 )
 
 
@@ -55,9 +63,25 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def create_secret_use_case() -> CreateSecretUseCase:
             return CreateSecretUseCase(SqlAlchemyUnitOfWork(session_factory))
 
+        def create_secret_version_use_case() -> CreateSecretVersionUseCase:
+            return CreateSecretVersionUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def list_secret_versions_use_case() -> ListSecretVersionsUseCase:
+            return ListSecretVersionsUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def build_active_secret_version_use_case() -> GetActiveSecretVersionUseCase:
+            return GetActiveSecretVersionUseCase(SqlAlchemyUnitOfWork(session_factory))
+
         app.dependency_overrides[get_create_vault_use_case] = create_vault_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case
         app.dependency_overrides[get_create_secret_use_case] = create_secret_use_case
+        app.dependency_overrides[get_create_secret_version_use_case] = (
+            create_secret_version_use_case
+        )
+        app.dependency_overrides[get_list_secret_versions_use_case] = list_secret_versions_use_case
+        app.dependency_overrides[get_active_secret_version_use_case] = (
+            build_active_secret_version_use_case
+        )
 
     return app
 

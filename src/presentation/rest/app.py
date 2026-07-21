@@ -7,6 +7,7 @@ from starlette.types import Lifespan
 
 from application.health import get_liveness_status
 from presentation.rest.projects import router as projects_router
+from presentation.rest.secrets import router as secrets_router
 from presentation.rest.vaults import router as vaults_router
 
 
@@ -43,6 +44,7 @@ def create_app(
 
     app.include_router(vaults_router)
     app.include_router(projects_router)
+    app.include_router(secrets_router)
 
     return app
 
