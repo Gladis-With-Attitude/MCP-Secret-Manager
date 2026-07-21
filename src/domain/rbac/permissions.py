@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+DEFAULT_PERMISSIONS: tuple[tuple[str, str], ...] = (
+    ("vault.create", "Create vaults."),
+    ("vault.read", "Read vault metadata."),
+    ("vault.update", "Update vault metadata."),
+    ("vault.delete", "Delete vaults."),
+    ("project.create", "Create projects."),
+    ("project.read", "Read project metadata."),
+    ("project.update", "Update project metadata."),
+    ("project.delete", "Delete projects."),
+    ("secret.create", "Create secrets."),
+    ("secret.read", "Read secret metadata."),
+    ("secret.update", "Update secret metadata."),
+    ("secret.delete", "Delete secrets."),
+    ("secret.decrypt", "Decrypt secret values."),
+    ("secret.rotate", "Rotate secret values."),
+    ("apikey.create", "Create API keys."),
+    ("apikey.revoke", "Revoke API keys."),
+    ("role.read", "Read roles and permissions."),
+    ("role.create", "Create roles."),
+    ("role.update", "Update roles."),
+    ("role.assign", "Assign roles."),
+    ("audit.read", "Read audit events."),
+)

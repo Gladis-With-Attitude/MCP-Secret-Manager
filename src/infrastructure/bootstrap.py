@@ -13,6 +13,7 @@ from application.identity.use_cases import (
     CreateUserUseCase,
 )
 from application.project.use_cases import CreateProjectUseCase
+from application.rbac.use_cases import AuthorizeUseCase, PermissionChecker
 from application.secret.use_cases import CreateSecretUseCase
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
@@ -28,6 +29,7 @@ from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from presentation.rest.app import create_app
 from presentation.rest.dependencies import (
     get_active_secret_version_use_case,
+    get_authorize_use_case,
     get_create_api_key_use_case,
     get_create_project_use_case,
     get_create_secret_use_case,
@@ -98,6 +100,9 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 api_key_hasher,
             )
 
+        def authorize_use_case() -> AuthorizeUseCase:
+            return AuthorizeUseCase(PermissionChecker(SqlAlchemyUnitOfWork(session_factory)))
+
         def create_project_use_case() -> CreateProjectUseCase:
             return CreateProjectUseCase(SqlAlchemyUnitOfWork(session_factory))
 
@@ -128,6 +133,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
             create_service_account_use_case
         )
         app.dependency_overrides[get_create_api_key_use_case] = create_api_key_use_case
+        app.dependency_overrides[get_authorize_use_case] = authorize_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case
         app.dependency_overrides[get_create_secret_use_case] = create_secret_use_case
         app.dependency_overrides[get_create_secret_version_use_case] = (

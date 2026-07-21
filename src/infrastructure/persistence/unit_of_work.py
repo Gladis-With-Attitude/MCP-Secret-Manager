@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from domain.identity.repositories import ApiKeyRepository, ServiceAccountRepository, UserRepository
 from domain.project.repositories import ProjectRepository
+from domain.rbac.repositories import PermissionRepository, RoleAssignmentRepository, RoleRepository
 from domain.secret.repositories import SecretRepository
 from domain.secret_version.repositories import SecretVersionRepository
 from domain.vault.repositories import VaultRepository
@@ -16,6 +17,11 @@ from infrastructure.persistence.identity_repositories import (
     SqlAlchemyUserRepository,
 )
 from infrastructure.persistence.project_repository import SqlAlchemyProjectRepository
+from infrastructure.persistence.rbac_repositories import (
+    SqlAlchemyPermissionRepository,
+    SqlAlchemyRoleAssignmentRepository,
+    SqlAlchemyRoleRepository,
+)
 from infrastructure.persistence.secret_repository import SqlAlchemySecretRepository
 from infrastructure.persistence.secret_version_repository import SqlAlchemySecretVersionRepository
 from infrastructure.persistence.vault_repository import SqlAlchemyVaultRepository
@@ -32,6 +38,9 @@ class SqlAlchemyUnitOfWork:
         self._users: SqlAlchemyUserRepository | None = None
         self._service_accounts: SqlAlchemyServiceAccountRepository | None = None
         self._api_keys: SqlAlchemyApiKeyRepository | None = None
+        self._permissions: SqlAlchemyPermissionRepository | None = None
+        self._roles: SqlAlchemyRoleRepository | None = None
+        self._role_assignments: SqlAlchemyRoleAssignmentRepository | None = None
 
     @property
     def vaults(self) -> VaultRepository:
@@ -75,6 +84,24 @@ class SqlAlchemyUnitOfWork:
             raise RuntimeError("Unit of Work has not been entered.")
         return self._api_keys
 
+    @property
+    def permissions(self) -> PermissionRepository:
+        if self._permissions is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._permissions
+
+    @property
+    def roles(self) -> RoleRepository:
+        if self._roles is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._roles
+
+    @property
+    def role_assignments(self) -> RoleAssignmentRepository:
+        if self._role_assignments is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._role_assignments
+
     async def __aenter__(self) -> Self:
         self._session = self._session_factory()
         self._vaults = SqlAlchemyVaultRepository(self._session)
@@ -84,6 +111,9 @@ class SqlAlchemyUnitOfWork:
         self._users = SqlAlchemyUserRepository(self._session)
         self._service_accounts = SqlAlchemyServiceAccountRepository(self._session)
         self._api_keys = SqlAlchemyApiKeyRepository(self._session)
+        self._permissions = SqlAlchemyPermissionRepository(self._session)
+        self._roles = SqlAlchemyRoleRepository(self._session)
+        self._role_assignments = SqlAlchemyRoleAssignmentRepository(self._session)
         return self
 
     async def __aexit__(
@@ -116,6 +146,9 @@ class SqlAlchemyUnitOfWork:
         self._users = None
         self._service_accounts = None
         self._api_keys = None
+        self._permissions = None
+        self._roles = None
+        self._role_assignments = None
 
     def _get_session(self) -> AsyncSession:
         if self._session is None:
