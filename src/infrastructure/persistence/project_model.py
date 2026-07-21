@@ -13,6 +13,7 @@ from domain.vault.value_objects import VaultId
 from infrastructure.persistence.base import Base
 
 if TYPE_CHECKING:
+    from infrastructure.persistence.secret_model import SecretModel
     from infrastructure.persistence.vault_model import VaultModel
 
 
@@ -37,6 +38,7 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
 
     vault: Mapped[VaultModel] = relationship("VaultModel", back_populates="projects")
+    secrets: Mapped[list[SecretModel]] = relationship("SecretModel", back_populates="project")
 
     @classmethod
     def from_domain(cls, project: Project) -> ProjectModel:

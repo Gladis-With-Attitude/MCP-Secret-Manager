@@ -17,6 +17,9 @@ from application.project.use_cases import CreateProjectUseCase
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectId, ProjectName
+from domain.secret.entities import Secret
+from domain.secret.repositories import SecretRepository, SecretRepositoryConflictError
+from domain.secret.value_objects import SecretId, SecretKey
 from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
@@ -67,10 +70,25 @@ class InMemoryProjectRepository:
         )
 
 
+class InMemorySecretRepository:
+    async def create(self, _secret: Secret) -> Secret:
+        raise SecretRepositoryConflictError("Secret repository is not used in Project tests.")
+
+    async def get(self, _secret_id: SecretId) -> Secret | None:
+        return None
+
+    async def list_by_project(self, _project_id: ProjectId) -> Sequence[Secret]:
+        return ()
+
+    async def exists_in_project(self, _project_id: ProjectId, _key: SecretKey) -> bool:
+        return False
+
+
 class InMemoryUnitOfWork:
     def __init__(self, vaults: VaultRepository, projects: ProjectRepository) -> None:
         self._vaults = vaults
         self._projects = projects
+        self._secrets = InMemorySecretRepository()
         self.committed = False
         self.rolled_back = False
 
@@ -81,6 +99,10 @@ class InMemoryUnitOfWork:
     @property
     def projects(self) -> ProjectRepository:
         return self._projects
+
+    @property
+    def secrets(self) -> SecretRepository:
+        return self._secrets
 
     async def __aenter__(self) -> Self:
         return self

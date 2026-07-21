@@ -17,3 +17,10 @@ async def get_create_project_use_case() -> NoReturn:
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Project persistence is not configured.",
     )
+
+
+async def get_create_secret_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Secret persistence is not configured.",
+    )

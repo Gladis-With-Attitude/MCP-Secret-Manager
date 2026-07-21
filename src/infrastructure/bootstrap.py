@@ -6,12 +6,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from application.project.use_cases import CreateProjectUseCase
+from application.secret.use_cases import CreateSecretUseCase
 from application.vault.use_cases import CreateVaultUseCase
 from infrastructure.config import AppSettings, get_settings
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from presentation.rest.app import create_app
-from presentation.rest.dependencies import get_create_project_use_case, get_create_vault_use_case
+from presentation.rest.dependencies import (
+    get_create_project_use_case,
+    get_create_secret_use_case,
+    get_create_vault_use_case,
+)
 
 
 def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
@@ -47,8 +52,12 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def create_project_use_case() -> CreateProjectUseCase:
             return CreateProjectUseCase(SqlAlchemyUnitOfWork(session_factory))
 
+        def create_secret_use_case() -> CreateSecretUseCase:
+            return CreateSecretUseCase(SqlAlchemyUnitOfWork(session_factory))
+
         app.dependency_overrides[get_create_vault_use_case] = create_vault_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case
+        app.dependency_overrides[get_create_secret_use_case] = create_secret_use_case
 
     return app
 

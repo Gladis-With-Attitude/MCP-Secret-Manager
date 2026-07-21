@@ -4,6 +4,7 @@ from types import TracebackType
 from typing import Protocol
 
 from domain.project.repositories import ProjectRepository
+from domain.secret.repositories import SecretRepository
 from domain.vault.repositories import VaultRepository
 
 
@@ -14,6 +15,10 @@ class UnitOfWork(Protocol):
 
     @property
     def projects(self) -> ProjectRepository:
+        raise NotImplementedError
+
+    @property
+    def secrets(self) -> SecretRepository:
         raise NotImplementedError
 
     async def __aenter__(self) -> UnitOfWork:
