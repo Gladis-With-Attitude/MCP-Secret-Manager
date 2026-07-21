@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mcp_secret_manager_test
+          POSTGRES_USER: mcp_secret_manager
+          POSTGRES_PASSWORD: mcp_secret_manager_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mcp_secret_manager -d mcp_secret_manager_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    env:
+      MCP_SECRET_MANAGER_ENVIRONMENT: test
+      MCP_SECRET_MANAGER_DATABASE_URL: postgresql+asyncpg://mcp_secret_manager:mcp_secret_manager_test_password@127.0.0.1:5432/mcp_secret_manager_test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Check formatting
+        run: python -m ruff format --check .
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Typecheck
+        run: python -m mypy src tests
+
+      - name: Test
+        run: python -m pytest

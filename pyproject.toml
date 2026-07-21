@@ -1,0 +1,107 @@
+[build-system]
+requires = ["setuptools>=75.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-secret-manager"
+version = "0.1.0"
+description = "Self-hosted secret manager for AI-first and MCP-native infrastructure."
+readme = "README.md"
+requires-python = ">=3.12,<4.0"
+authors = [{ name = "MCP Secret Manager Maintainers" }]
+keywords = ["mcp", "secrets", "fastapi", "postgresql", "security"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Framework :: FastAPI",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+]
+dependencies = [
+  "alembic>=1.14.0,<2.0.0",
+  "asyncpg>=0.30.0,<1.0.0",
+  "cryptography>=44.0.0,<46.0.0",
+  "fastapi>=0.115.0,<1.0.0",
+  "pydantic-settings>=2.7.0,<3.0.0",
+  "sqlalchemy[asyncio]>=2.0.0,<3.0.0",
+  "uvicorn[standard]>=0.34.0,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "anyio>=4.0.0,<5.0.0",
+  "httpx>=0.28.0,<1.0.0",
+  "mypy>=1.14.0,<2.0.0",
+  "pre-commit>=4.0.0,<5.0.0",
+  "pytest>=8.3.0,<9.0.0",
+  "pytest-cov>=6.0.0,<7.0.0",
+  "ruff>=0.8.6,<1.0.0",
+]
+
+[project.scripts]
+mcp-secret-manager = "presentation.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["application*", "domain*", "infrastructure*", "presentation*", "shared*"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "--cov=src",
+  "--cov-report=term-missing",
+]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+  "integration: tests that require controlled infrastructure",
+  "security: tests for security-specific behavior",
+  "e2e: end-to-end workflow tests",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+mypy_path = "src"
+packages = ["application", "domain", "infrastructure", "presentation", "shared"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ANN",
+  "ARG",
+  "B",
+  "C4",
+  "E",
+  "F",
+  "I",
+  "N",
+  "RUF",
+  "S",
+  "SIM",
+  "T20",
+  "UP",
+  "W",
+]
+ignore = [
+  "ANN401",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
