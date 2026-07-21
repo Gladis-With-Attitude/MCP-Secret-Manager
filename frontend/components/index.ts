@@ -1,5 +1,17 @@
 "use client";
 
+export type { AuthGuardProps } from "./auth/auth-guard";
+export { AuthGuard } from "./auth/auth-guard";
+export type { AuthLoadingScreenProps } from "./auth/auth-loading-screen";
+export { AuthLoadingScreen } from "./auth/auth-loading-screen";
+export type { ForbiddenPageProps } from "./auth/forbidden-page";
+export { ForbiddenPage } from "./auth/forbidden-page";
+export type { GuestGuardProps } from "./auth/guest-guard";
+export { GuestGuard } from "./auth/guest-guard";
+export type { SessionExpiredDialogProps } from "./auth/session-expired-dialog";
+export { SessionExpiredDialog } from "./auth/session-expired-dialog";
+export type { UnauthorizedPageProps } from "./auth/unauthorized-page";
+export { UnauthorizedPage } from "./auth/unauthorized-page";
 export type { ButtonProps } from "./buttons/button";
 export { Button, buttonVariants } from "./buttons/button";
 export type { IconButtonProps } from "./buttons/icon-button";

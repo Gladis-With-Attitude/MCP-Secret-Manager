@@ -37,6 +37,7 @@ npm run format:check
 - `features/`: product features, intentionally empty for this bootstrap.
 - `lib/`: frontend infrastructure and generic utilities.
 - `lib/api/`: HTTP client, runtime API configuration, response parsing, error normalization and generic HTTP helpers.
+- `lib/auth/`: authentication state contracts, session helpers, route protection helpers and extension points.
 - `hooks/`: shared non-business hooks.
 - `config/`: public non-sensitive frontend configuration.
 - `styles/`: Tailwind CSS v4 global foundations.
@@ -53,6 +54,8 @@ npm run format:check
 - Use TanStack Query for server state only.
 - Use `lib/api/` for backend communication; components must not call `fetch` directly.
 - Keep API errors normalized through the shared error hierarchy.
+- Use `AuthProvider`, `useAuth`, `AuthGuard` and `GuestGuard` for session-aware UI boundaries.
+- Keep authentication based on minimal session state; never store tokens or secrets in browser storage.
 - Keep DTOs and feature services inside their future feature boundaries.
 - Use React Hook Form and Zod for future forms.
 
