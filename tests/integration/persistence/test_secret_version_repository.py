@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from domain.crypto.entities import EncryptedSecretValue
 from domain.project.entities import Project
 from domain.project.value_objects import ProjectName
 from domain.secret.entities import Secret
@@ -15,7 +16,6 @@ from domain.secret.value_objects import SecretDescription, SecretKey
 from domain.secret_version.entities import SecretVersion
 from domain.secret_version.repositories import SecretVersionRepositoryConflictError
 from domain.secret_version.value_objects import (
-    SecretValue,
     SecretVersionId,
     SecretVersionNumber,
 )
@@ -86,6 +86,17 @@ async def create_secret(session: AsyncSession, name: str = "API") -> Secret:
     )
 
 
+def encrypted_payload(value: bytes = b"encrypted-value") -> EncryptedSecretValue:
+    return EncryptedSecretValue(
+        encrypted_value=value,
+        encrypted_dek=b"encrypted-dek",
+        nonce=b"0" * 12,
+        authentication_tag=b"1" * 16,
+        encryption_algorithm="AES-256-GCM",
+        key_version=1,
+    )
+
+
 @pytest.mark.integration
 @pytest.mark.anyio
 async def test_secret_version_repository_create_get_list_and_active(
@@ -96,7 +107,7 @@ async def test_secret_version_repository_create_get_list_and_active(
         repository = SqlAlchemySecretVersionRepository(session)
         secret_version = SecretVersion.create(
             secret_id=secret.id,
-            value=SecretValue("plain-value-v1"),
+            encrypted_payload=encrypted_payload(b"encrypted-value-v1"),
             version=SecretVersionNumber(1),
         )
 
@@ -114,7 +125,7 @@ async def test_secret_version_repository_create_get_list_and_active(
     assert listed == (created,)
     assert active == created
     assert fetched is not None
-    assert fetched.value.value == "plain-value-v1"
+    assert fetched.encrypted_value == b"encrypted-value-v1"
 
 
 @pytest.mark.integration
@@ -128,7 +139,7 @@ async def test_secret_version_repository_deactivates_previous_versions(
         first = await repository.create(
             SecretVersion.create(
                 secret_id=secret.id,
-                value=SecretValue("plain-value-v1"),
+                encrypted_payload=encrypted_payload(b"encrypted-value-v1"),
                 version=SecretVersionNumber(1),
             )
         )
@@ -136,7 +147,7 @@ async def test_secret_version_repository_deactivates_previous_versions(
         second = await repository.create(
             SecretVersion.create(
                 secret_id=secret.id,
-                value=SecretValue("plain-value-v2"),
+                encrypted_payload=encrypted_payload(b"encrypted-value-v2"),
                 version=SecretVersionNumber(2),
             )
         )
@@ -149,9 +160,9 @@ async def test_secret_version_repository_deactivates_previous_versions(
 
     assert [version.id for version in history] == [first.id, second.id]
     assert [version.active for version in history] == [False, True]
-    assert [version.value.value for version in history] == [
-        "plain-value-v1",
-        "plain-value-v2",
+    assert [version.encrypted_value for version in history] == [
+        b"encrypted-value-v1",
+        b"encrypted-value-v2",
     ]
     assert active == second
 
@@ -167,7 +178,7 @@ async def test_secret_version_repository_enforces_single_active_version(
         await repository.create(
             SecretVersion.create(
                 secret_id=secret.id,
-                value=SecretValue("plain-value-v1"),
+                encrypted_payload=encrypted_payload(b"encrypted-value-v1"),
                 version=SecretVersionNumber(1),
             )
         )
@@ -176,7 +187,7 @@ async def test_secret_version_repository_enforces_single_active_version(
             await repository.create(
                 SecretVersion.create(
                     secret_id=secret.id,
-                    value=SecretValue("plain-value-v2"),
+                    encrypted_payload=encrypted_payload(b"encrypted-value-v2"),
                     version=SecretVersionNumber(2),
                 )
             )
@@ -193,7 +204,7 @@ async def test_secret_version_repository_enforces_unique_version_per_secret(
         first = await repository.create(
             SecretVersion.create(
                 secret_id=secret.id,
-                value=SecretValue("plain-value-v1"),
+                encrypted_payload=encrypted_payload(b"encrypted-value-v1"),
                 version=SecretVersionNumber(1),
             )
         )
@@ -204,7 +215,12 @@ async def test_secret_version_repository_enforces_unique_version_per_secret(
                 SecretVersion(
                     id=SecretVersionId.new(),
                     secret_id=secret.id,
-                    value=SecretValue("plain-value-v1-duplicate"),
+                    encrypted_value=b"encrypted-value-v1-duplicate",
+                    encrypted_dek=b"encrypted-dek",
+                    nonce=b"2" * 12,
+                    authentication_tag=b"3" * 16,
+                    encryption_algorithm="AES-256-GCM",
+                    key_version=1,
                     version=SecretVersionNumber(1),
                     active=True,
                     created_at=first.created_at,
@@ -232,7 +248,7 @@ async def test_secret_version_repository_requires_existing_secret(
             await repository.create(
                 SecretVersion.create(
                     secret_id=ghost_secret.id,
-                    value=SecretValue("plain-value"),
+                    encrypted_payload=encrypted_payload(),
                     version=SecretVersionNumber(1),
                 )
             )
@@ -247,14 +263,19 @@ async def test_secret_version_table_enforces_required_value_check(
         secret = await create_secret(session)
         secret_version = SecretVersion.create(
             secret_id=secret.id,
-            value=SecretValue("plain-value-v1"),
+            encrypted_payload=encrypted_payload(),
             version=SecretVersionNumber(1),
         )
         session.add(
             SecretVersionModel(
                 id=secret_version.id.value,
                 secret_id=secret.id.value,
-                value="",
+                encrypted_value=b"",
+                encrypted_dek=secret_version.encrypted_dek,
+                nonce=secret_version.nonce,
+                authentication_tag=secret_version.authentication_tag,
+                encryption_algorithm=secret_version.encryption_algorithm,
+                key_version=secret_version.key_version,
                 version=secret_version.version.value,
                 active=True,
                 created_at=secret_version.created_at,

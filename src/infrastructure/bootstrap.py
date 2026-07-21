@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
 from application.project.use_cases import CreateProjectUseCase
 from application.secret.use_cases import CreateSecretUseCase
 from application.secret_version.use_cases import (
@@ -14,6 +15,7 @@ from application.secret_version.use_cases import (
 )
 from application.vault.use_cases import CreateVaultUseCase
 from infrastructure.config import AppSettings, get_settings
+from infrastructure.crypto import AesGcmCryptoProvider
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from presentation.rest.app import create_app
@@ -53,6 +55,10 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     )
 
     if session_factory is not None:
+        crypto_provider = AesGcmCryptoProvider.from_base64_master_key(
+            resolved_settings.master_key_base64,
+            key_version=resolved_settings.master_key_version,
+        )
 
         def create_vault_use_case() -> CreateVaultUseCase:
             return CreateVaultUseCase(SqlAlchemyUnitOfWork(session_factory))
@@ -64,13 +70,22 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
             return CreateSecretUseCase(SqlAlchemyUnitOfWork(session_factory))
 
         def create_secret_version_use_case() -> CreateSecretVersionUseCase:
-            return CreateSecretVersionUseCase(SqlAlchemyUnitOfWork(session_factory))
+            return CreateSecretVersionUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                EncryptSecretValueUseCase(crypto_provider),
+            )
 
         def list_secret_versions_use_case() -> ListSecretVersionsUseCase:
-            return ListSecretVersionsUseCase(SqlAlchemyUnitOfWork(session_factory))
+            return ListSecretVersionsUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                DecryptSecretValueUseCase(crypto_provider),
+            )
 
         def build_active_secret_version_use_case() -> GetActiveSecretVersionUseCase:
-            return GetActiveSecretVersionUseCase(SqlAlchemyUnitOfWork(session_factory))
+            return GetActiveSecretVersionUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                DecryptSecretValueUseCase(crypto_provider),
+            )
 
         app.dependency_overrides[get_create_vault_use_case] = create_vault_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case

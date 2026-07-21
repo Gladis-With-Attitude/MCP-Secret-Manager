@@ -8,6 +8,7 @@ from application.secret_version.dto import CreateSecretVersionRequest
 from application.secret_version.exceptions import (
     SecretNotFoundError,
     SecretVersionConflictError,
+    SecretVersionCryptoError,
     SecretVersionNotFoundError,
     SecretVersionValidationError,
 )
@@ -50,6 +51,7 @@ GetActiveSecretVersionUseCaseDependency = Annotated[
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid secret version data."},
         status.HTTP_404_NOT_FOUND: {"description": "Secret not found."},
         status.HTTP_409_CONFLICT: {"description": "Secret version conflict."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Secret version crypto failure."},
     },
 )
 async def create_secret_version(
@@ -67,6 +69,11 @@ async def create_secret_version(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except SecretVersionConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except SecretVersionCryptoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Secret version cryptographic operation failed.",
+        ) from exc
 
     return SecretVersionHttpResponse.from_application(response)
 
@@ -77,6 +84,7 @@ async def create_secret_version(
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid secret id."},
         status.HTTP_404_NOT_FOUND: {"description": "Secret not found."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Secret version crypto failure."},
     },
 )
 async def list_secret_versions(
@@ -89,6 +97,11 @@ async def list_secret_versions(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except SecretNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SecretVersionCryptoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Secret version cryptographic operation failed.",
+        ) from exc
 
     return [SecretVersionHttpResponse.from_application(item) for item in response]
 
@@ -99,6 +112,7 @@ async def list_secret_versions(
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid secret id."},
         status.HTTP_404_NOT_FOUND: {"description": "Secret or active version not found."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Secret version crypto failure."},
     },
 )
 async def get_latest_secret_version(
@@ -111,5 +125,10 @@ async def get_latest_secret_version(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except (SecretNotFoundError, SecretVersionNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SecretVersionCryptoError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Secret version cryptographic operation failed.",
+        ) from exc
 
     return SecretVersionHttpResponse.from_application(response)

@@ -24,6 +24,7 @@ class AppSettings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     database_url: str | None = None
     master_key_base64: str | None = None
+    master_key_version: int = Field(default=1, ge=1)
     rest_host: str = "127.0.0.1"
     rest_port: int = Field(default=8000, ge=1, le=65535)
     openapi_enabled: bool = True

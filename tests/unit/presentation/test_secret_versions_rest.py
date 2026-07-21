@@ -8,11 +8,13 @@ import anyio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
+from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
     ListSecretVersionsUseCase,
 )
+from domain.crypto.entities import EncryptedSecretValue, SecretEncryptionContext
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectId, ProjectName
@@ -24,7 +26,7 @@ from domain.secret_version.repositories import (
     SecretVersionRepository,
     SecretVersionRepositoryConflictError,
 )
-from domain.secret_version.value_objects import SecretVersionId
+from domain.secret_version.value_objects import SecretValue, SecretVersionId
 from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
@@ -134,6 +136,30 @@ class InMemorySecretVersionRepository:
                 self._versions[version_id] = version.deactivate()
 
 
+class FakeCryptoProvider:
+    def encrypt_secret_value(
+        self,
+        _value: SecretValue,
+        context: SecretEncryptionContext,
+    ) -> EncryptedSecretValue:
+        ciphertext = f"ciphertext:{context.secret_id}:{context.version}".encode()
+        return EncryptedSecretValue(
+            encrypted_value=ciphertext,
+            encrypted_dek=f"wrapped-dek:{context.secret_id}:{context.version}".encode(),
+            nonce=f"{context.version:012d}".encode(),
+            authentication_tag=b"0" * 16,
+            encryption_algorithm="AES-256-GCM",
+            key_version=1,
+        )
+
+    def decrypt_secret_value(
+        self,
+        _encrypted_value: EncryptedSecretValue,
+        context: SecretEncryptionContext,
+    ) -> SecretValue:
+        return SecretValue(f"plain-value-v{context.version}")
+
+
 class InMemoryUnitOfWork:
     def __init__(
         self,
@@ -191,16 +217,26 @@ async def build_app_with_secret() -> tuple[FastAPI, Secret]:
         )
     )
     unit_of_work = InMemoryUnitOfWork(secrets, secret_versions)
+    crypto_provider = FakeCryptoProvider()
     app = create_app(service_name="test-service")
 
     async def create_dependency() -> AsyncIterator[CreateSecretVersionUseCase]:
-        yield CreateSecretVersionUseCase(unit_of_work)
+        yield CreateSecretVersionUseCase(
+            unit_of_work,
+            EncryptSecretValueUseCase(crypto_provider),
+        )
 
     async def list_dependency() -> AsyncIterator[ListSecretVersionsUseCase]:
-        yield ListSecretVersionsUseCase(unit_of_work)
+        yield ListSecretVersionsUseCase(
+            unit_of_work,
+            DecryptSecretValueUseCase(crypto_provider),
+        )
 
     async def latest_dependency() -> AsyncIterator[GetActiveSecretVersionUseCase]:
-        yield GetActiveSecretVersionUseCase(unit_of_work)
+        yield GetActiveSecretVersionUseCase(
+            unit_of_work,
+            DecryptSecretValueUseCase(crypto_provider),
+        )
 
     app.dependency_overrides[get_create_secret_version_use_case] = create_dependency
     app.dependency_overrides[get_list_secret_versions_use_case] = list_dependency

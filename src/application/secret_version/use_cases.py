@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
 from application.secret_version.dto import CreateSecretVersionRequest, SecretVersionResponse
 from application.secret_version.exceptions import (
     SecretNotFoundError,
     SecretVersionConflictError,
+    SecretVersionCryptoError,
     SecretVersionNotFoundError,
     SecretVersionValidationError,
 )
 from application.unit_of_work import UnitOfWork
+from domain.crypto.entities import SecretEncryptionContext
+from domain.crypto.exceptions import CryptoProviderError
 from domain.secret.value_objects import SecretId
 from domain.secret_version.entities import SecretVersion
 from domain.secret_version.exceptions import SecretVersionDomainError
@@ -18,8 +22,13 @@ from domain.secret_version.value_objects import SecretValue, SecretVersionNumber
 
 
 class CreateSecretVersionUseCase:
-    def __init__(self, unit_of_work: UnitOfWork) -> None:
+    def __init__(
+        self,
+        unit_of_work: UnitOfWork,
+        encrypt_secret_value_use_case: EncryptSecretValueUseCase,
+    ) -> None:
         self._unit_of_work = unit_of_work
+        self._encrypt_secret_value_use_case = encrypt_secret_value_use_case
 
     async def execute(self, request: CreateSecretVersionRequest) -> SecretVersionResponse:
         secret_id = self._validate_secret_id(request.secret_id)
@@ -32,9 +41,21 @@ class CreateSecretVersionUseCase:
 
             versions = await unit_of_work.secret_versions.list_versions(secret_id)
             next_version = self._next_version_number(versions)
+            encryption_context = SecretEncryptionContext(
+                secret_id=str(secret_id),
+                version=next_version.value,
+            )
+            try:
+                encrypted_value = self._encrypt_secret_value_use_case.execute(
+                    value,
+                    encryption_context,
+                )
+            except CryptoProviderError as exc:
+                raise SecretVersionCryptoError("Secret value encryption failed.") from exc
+
             secret_version = SecretVersion.create(
                 secret_id=secret_id,
-                value=value,
+                encrypted_payload=encrypted_value,
                 version=next_version,
             )
 
@@ -46,7 +67,7 @@ class CreateSecretVersionUseCase:
 
             await unit_of_work.commit()
 
-        return SecretVersionResponse.from_domain(created_secret_version)
+        return SecretVersionResponse.from_domain(created_secret_version, value)
 
     @staticmethod
     def _next_version_number(versions: Sequence[SecretVersion]) -> SecretVersionNumber:
@@ -71,8 +92,13 @@ class CreateSecretVersionUseCase:
 
 
 class ListSecretVersionsUseCase:
-    def __init__(self, unit_of_work: UnitOfWork) -> None:
+    def __init__(
+        self,
+        unit_of_work: UnitOfWork,
+        decrypt_secret_value_use_case: DecryptSecretValueUseCase,
+    ) -> None:
         self._unit_of_work = unit_of_work
+        self._decrypt_secret_value_use_case = decrypt_secret_value_use_case
 
     async def execute(self, secret_id: str) -> tuple[SecretVersionResponse, ...]:
         validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
@@ -84,12 +110,25 @@ class ListSecretVersionsUseCase:
 
             versions = await unit_of_work.secret_versions.list_versions(validated_secret_id)
 
-        return tuple(SecretVersionResponse.from_domain(version) for version in versions)
+        return tuple(self._to_response(version) for version in versions)
+
+    def _to_response(self, secret_version: SecretVersion) -> SecretVersionResponse:
+        try:
+            value = self._decrypt_secret_value_use_case.execute(secret_version)
+        except CryptoProviderError as exc:
+            raise SecretVersionCryptoError("Secret value decryption failed.") from exc
+
+        return SecretVersionResponse.from_domain(secret_version, value)
 
 
 class GetActiveSecretVersionUseCase:
-    def __init__(self, unit_of_work: UnitOfWork) -> None:
+    def __init__(
+        self,
+        unit_of_work: UnitOfWork,
+        decrypt_secret_value_use_case: DecryptSecretValueUseCase,
+    ) -> None:
         self._unit_of_work = unit_of_work
+        self._decrypt_secret_value_use_case = decrypt_secret_value_use_case
 
     async def execute(self, secret_id: str) -> SecretVersionResponse:
         validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
@@ -103,4 +142,9 @@ class GetActiveSecretVersionUseCase:
             if active_version is None:
                 raise SecretVersionNotFoundError("Active secret version not found.")
 
-        return SecretVersionResponse.from_domain(active_version)
+        try:
+            value = self._decrypt_secret_value_use_case.execute(active_version)
+        except CryptoProviderError as exc:
+            raise SecretVersionCryptoError("Secret value decryption failed.") from exc
+
+        return SecretVersionResponse.from_domain(active_version, value)

@@ -7,6 +7,7 @@ from typing import Self
 import anyio
 import pytest
 
+from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
 from application.secret_version.dto import CreateSecretVersionRequest
 from application.secret_version.exceptions import (
     SecretNotFoundError,
@@ -19,6 +20,7 @@ from application.secret_version.use_cases import (
     GetActiveSecretVersionUseCase,
     ListSecretVersionsUseCase,
 )
+from domain.crypto.entities import EncryptedSecretValue, SecretEncryptionContext
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectId, ProjectName
@@ -30,7 +32,7 @@ from domain.secret_version.repositories import (
     SecretVersionRepository,
     SecretVersionRepositoryConflictError,
 )
-from domain.secret_version.value_objects import SecretVersionId
+from domain.secret_version.value_objects import SecretValue, SecretVersionId
 from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
@@ -136,6 +138,30 @@ class InMemorySecretVersionRepository:
                 self._versions[version_id] = version.deactivate()
 
 
+class FakeCryptoProvider:
+    def encrypt_secret_value(
+        self,
+        _value: SecretValue,
+        context: SecretEncryptionContext,
+    ) -> EncryptedSecretValue:
+        ciphertext = f"ciphertext:{context.secret_id}:{context.version}".encode()
+        return EncryptedSecretValue(
+            encrypted_value=ciphertext,
+            encrypted_dek=f"wrapped-dek:{context.secret_id}:{context.version}".encode(),
+            nonce=f"{context.version:012d}".encode(),
+            authentication_tag=b"0" * 16,
+            encryption_algorithm="AES-256-GCM",
+            key_version=1,
+        )
+
+    def decrypt_secret_value(
+        self,
+        _encrypted_value: EncryptedSecretValue,
+        context: SecretEncryptionContext,
+    ) -> SecretValue:
+        return SecretValue(f"plain-value-v{context.version}")
+
+
 class InMemoryUnitOfWork:
     def __init__(
         self,
@@ -197,11 +223,34 @@ async def build_unit_of_work_with_secret() -> tuple[InMemoryUnitOfWork, Secret]:
     return InMemoryUnitOfWork(secrets, secret_versions), secret
 
 
+def build_create_use_case(unit_of_work: InMemoryUnitOfWork) -> CreateSecretVersionUseCase:
+    return CreateSecretVersionUseCase(
+        unit_of_work,
+        EncryptSecretValueUseCase(FakeCryptoProvider()),
+    )
+
+
+def build_list_use_case(unit_of_work: InMemoryUnitOfWork) -> ListSecretVersionsUseCase:
+    return ListSecretVersionsUseCase(
+        unit_of_work,
+        DecryptSecretValueUseCase(FakeCryptoProvider()),
+    )
+
+
+def build_get_active_use_case(
+    unit_of_work: InMemoryUnitOfWork,
+) -> GetActiveSecretVersionUseCase:
+    return GetActiveSecretVersionUseCase(
+        unit_of_work,
+        DecryptSecretValueUseCase(FakeCryptoProvider()),
+    )
+
+
 def test_create_secret_version_use_case_creates_v1_as_active() -> None:
     async def run() -> None:
         unit_of_work, secret = await build_unit_of_work_with_secret()
         repository = unit_of_work.secret_versions
-        use_case = CreateSecretVersionUseCase(unit_of_work)
+        use_case = build_create_use_case(unit_of_work)
 
         response = await use_case.execute(
             CreateSecretVersionRequest(secret_id=str(secret.id), value="plain-value-v1")
@@ -214,6 +263,10 @@ def test_create_secret_version_use_case_creates_v1_as_active() -> None:
         assert isinstance(repository, InMemorySecretVersionRepository)
         assert repository.create_calls == 1
         assert repository.deactivate_calls == 1
+        stored_versions = await repository.list_versions(secret.id)
+        assert stored_versions[0].encrypted_value != b"plain-value-v1"
+        assert b"plain-value-v1" not in stored_versions[0].encrypted_value
+        assert b"plain-value-v1" not in stored_versions[0].encrypted_dek
         assert unit_of_work.committed is True
         assert unit_of_work.rolled_back is False
 
@@ -223,7 +276,7 @@ def test_create_secret_version_use_case_creates_v1_as_active() -> None:
 def test_create_secret_version_use_case_creates_v2_and_deactivates_v1() -> None:
     async def run() -> None:
         unit_of_work, secret = await build_unit_of_work_with_secret()
-        create_use_case = CreateSecretVersionUseCase(unit_of_work)
+        create_use_case = build_create_use_case(unit_of_work)
         await create_use_case.execute(
             CreateSecretVersionRequest(secret_id=str(secret.id), value="plain-value-v1")
         )
@@ -232,8 +285,8 @@ def test_create_secret_version_use_case_creates_v2_and_deactivates_v1() -> None:
         second_response = await create_use_case.execute(
             CreateSecretVersionRequest(secret_id=str(secret.id), value="plain-value-v2")
         )
-        history = await ListSecretVersionsUseCase(unit_of_work).execute(str(secret.id))
-        latest = await GetActiveSecretVersionUseCase(unit_of_work).execute(str(secret.id))
+        history = await build_list_use_case(unit_of_work).execute(str(secret.id))
+        latest = await build_get_active_use_case(unit_of_work).execute(str(secret.id))
 
         assert second_response.version == 2
         assert second_response.active is True
@@ -249,7 +302,7 @@ def test_create_secret_version_use_case_creates_v2_and_deactivates_v1() -> None:
 def test_create_secret_version_use_case_rejects_invalid_secret_id() -> None:
     async def run() -> None:
         unit_of_work, _secret = await build_unit_of_work_with_secret()
-        use_case = CreateSecretVersionUseCase(unit_of_work)
+        use_case = build_create_use_case(unit_of_work)
 
         with pytest.raises(SecretVersionValidationError, match="valid UUID"):
             await use_case.execute(CreateSecretVersionRequest("not-a-uuid", "plain-value"))
@@ -263,7 +316,7 @@ def test_create_secret_version_use_case_rejects_invalid_secret_id() -> None:
 def test_create_secret_version_use_case_rejects_empty_value() -> None:
     async def run() -> None:
         unit_of_work, secret = await build_unit_of_work_with_secret()
-        use_case = CreateSecretVersionUseCase(unit_of_work)
+        use_case = build_create_use_case(unit_of_work)
 
         with pytest.raises(SecretVersionValidationError, match="required"):
             await use_case.execute(CreateSecretVersionRequest(secret_id=str(secret.id), value=""))
@@ -278,7 +331,7 @@ def test_create_secret_version_use_case_rejects_missing_secret() -> None:
     async def run() -> None:
         secret_versions = InMemorySecretVersionRepository()
         unit_of_work = InMemoryUnitOfWork(InMemorySecretRepository(), secret_versions)
-        use_case = CreateSecretVersionUseCase(unit_of_work)
+        use_case = build_create_use_case(unit_of_work)
 
         with pytest.raises(SecretNotFoundError, match="not found"):
             await use_case.execute(
@@ -297,7 +350,7 @@ def test_get_active_secret_version_use_case_rejects_missing_active_version() -> 
         unit_of_work, secret = await build_unit_of_work_with_secret()
 
         with pytest.raises(SecretVersionNotFoundError, match="Active"):
-            await GetActiveSecretVersionUseCase(unit_of_work).execute(str(secret.id))
+            await build_get_active_use_case(unit_of_work).execute(str(secret.id))
 
     anyio.run(run)
 
@@ -319,7 +372,7 @@ def test_create_secret_version_use_case_maps_repository_conflict() -> None:
         )
         repository = ConflictingSecretVersionRepository()
         unit_of_work = InMemoryUnitOfWork(secrets, repository)
-        use_case = CreateSecretVersionUseCase(unit_of_work)
+        use_case = build_create_use_case(unit_of_work)
 
         with pytest.raises(SecretVersionConflictError, match="conflict"):
             await use_case.execute(

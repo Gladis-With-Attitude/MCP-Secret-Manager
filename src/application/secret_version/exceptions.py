@@ -19,3 +19,7 @@ class SecretVersionNotFoundError(SecretVersionApplicationError):
 
 class SecretVersionConflictError(SecretVersionApplicationError):
     """Raised when a SecretVersion persistence conflict occurs."""
+
+
+class SecretVersionCryptoError(SecretVersionApplicationError):
+    """Raised when a SecretVersion cannot be encrypted or decrypted safely."""
