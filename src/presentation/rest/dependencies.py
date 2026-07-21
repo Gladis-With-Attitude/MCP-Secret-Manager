@@ -1,0 +1,19 @@
+from __future__ import annotations
+
+from typing import NoReturn
+
+from fastapi import HTTPException, status
+
+
+async def get_create_vault_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Vault persistence is not configured.",
+    )
+
+
+async def get_create_project_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Project persistence is not configured.",
+    )

@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+
+class ProjectApplicationError(RuntimeError):
+    """Base class for Project application errors."""
+
+
+class ProjectValidationError(ProjectApplicationError):
+    """Raised when a create Project request violates validation."""
+
+
+class VaultNotFoundError(ProjectApplicationError):
+    """Raised when the parent Vault does not exist."""
+
+
+class ProjectAlreadyExistsError(ProjectApplicationError):
+    """Raised when a Project with the same name already exists in a Vault."""
