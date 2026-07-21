@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from application.identity.dto import (
+    ApiKeyCreatedResponse,
+    ServiceAccountResponse,
+    UserResponse,
+)
 from application.project.dto import ProjectResponse
 from application.secret.dto import SecretResponse
 from application.secret_version.dto import SecretVersionResponse
@@ -84,5 +89,88 @@ class SecretVersionHttpResponse(BaseModel):
             value=response.value,
             version=response.version,
             active=response.active,
+            created_at=response.created_at,
+        )
+
+
+class CreateUserHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    display_name: str
+
+
+class UserHttpResponse(BaseModel):
+    id: str
+    email: str
+    display_name: str
+    status: str
+    created_at: str
+
+    @classmethod
+    def from_application(cls, response: UserResponse) -> UserHttpResponse:
+        return cls(
+            id=response.id,
+            email=response.email,
+            display_name=response.display_name,
+            status=response.status,
+            created_at=response.created_at,
+        )
+
+
+class CreateServiceAccountHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str
+    name: str
+    description: str | None = None
+
+
+class ServiceAccountHttpResponse(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    description: str | None
+    status: str
+    created_at: str
+
+    @classmethod
+    def from_application(cls, response: ServiceAccountResponse) -> ServiceAccountHttpResponse:
+        return cls(
+            id=response.id,
+            project_id=response.project_id,
+            name=response.name,
+            description=response.description,
+            status=response.status,
+            created_at=response.created_at,
+        )
+
+
+class CreateApiKeyHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    owner_id: str
+    owner_type: str
+    expires_at: str | None = None
+
+
+class ApiKeyCreatedHttpResponse(BaseModel):
+    id: str
+    api_key: str
+    key_prefix: str
+    owner_id: str
+    owner_type: str
+    expires_at: str | None
+    created_at: str
+
+    @classmethod
+    def from_application(cls, response: ApiKeyCreatedResponse) -> ApiKeyCreatedHttpResponse:
+        return cls(
+            id=response.id,
+            api_key=response.api_key,
+            key_prefix=response.key_prefix,
+            owner_id=response.owner_id,
+            owner_type=response.owner_type,
+            expires_at=response.expires_at,
             created_at=response.created_at,
         )

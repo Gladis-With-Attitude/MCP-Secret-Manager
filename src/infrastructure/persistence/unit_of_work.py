@@ -5,10 +5,16 @@ from typing import Self
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from domain.identity.repositories import ApiKeyRepository, ServiceAccountRepository, UserRepository
 from domain.project.repositories import ProjectRepository
 from domain.secret.repositories import SecretRepository
 from domain.secret_version.repositories import SecretVersionRepository
 from domain.vault.repositories import VaultRepository
+from infrastructure.persistence.identity_repositories import (
+    SqlAlchemyApiKeyRepository,
+    SqlAlchemyServiceAccountRepository,
+    SqlAlchemyUserRepository,
+)
 from infrastructure.persistence.project_repository import SqlAlchemyProjectRepository
 from infrastructure.persistence.secret_repository import SqlAlchemySecretRepository
 from infrastructure.persistence.secret_version_repository import SqlAlchemySecretVersionRepository
@@ -23,6 +29,9 @@ class SqlAlchemyUnitOfWork:
         self._projects: SqlAlchemyProjectRepository | None = None
         self._secrets: SqlAlchemySecretRepository | None = None
         self._secret_versions: SqlAlchemySecretVersionRepository | None = None
+        self._users: SqlAlchemyUserRepository | None = None
+        self._service_accounts: SqlAlchemyServiceAccountRepository | None = None
+        self._api_keys: SqlAlchemyApiKeyRepository | None = None
 
     @property
     def vaults(self) -> VaultRepository:
@@ -48,12 +57,33 @@ class SqlAlchemyUnitOfWork:
             raise RuntimeError("Unit of Work has not been entered.")
         return self._secret_versions
 
+    @property
+    def users(self) -> UserRepository:
+        if self._users is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._users
+
+    @property
+    def service_accounts(self) -> ServiceAccountRepository:
+        if self._service_accounts is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._service_accounts
+
+    @property
+    def api_keys(self) -> ApiKeyRepository:
+        if self._api_keys is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._api_keys
+
     async def __aenter__(self) -> Self:
         self._session = self._session_factory()
         self._vaults = SqlAlchemyVaultRepository(self._session)
         self._projects = SqlAlchemyProjectRepository(self._session)
         self._secrets = SqlAlchemySecretRepository(self._session)
         self._secret_versions = SqlAlchemySecretVersionRepository(self._session)
+        self._users = SqlAlchemyUserRepository(self._session)
+        self._service_accounts = SqlAlchemyServiceAccountRepository(self._session)
+        self._api_keys = SqlAlchemyApiKeyRepository(self._session)
         return self
 
     async def __aexit__(
@@ -83,6 +113,9 @@ class SqlAlchemyUnitOfWork:
         self._projects = None
         self._secrets = None
         self._secret_versions = None
+        self._users = None
+        self._service_accounts = None
+        self._api_keys = None
 
     def _get_session(self) -> AsyncSession:
         if self._session is None:

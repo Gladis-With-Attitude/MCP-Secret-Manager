@@ -6,6 +6,9 @@ from fastapi.responses import JSONResponse
 from starlette.types import Lifespan
 
 from application.health import get_liveness_status
+from application.identity.use_cases import AuthenticateApiKeyUseCase
+from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
+from presentation.rest.identity import router as identity_router
 from presentation.rest.projects import router as projects_router
 from presentation.rest.secrets import router as secrets_router
 from presentation.rest.vaults import router as vaults_router
@@ -15,6 +18,7 @@ def create_app(
     service_name: str = "mcp-secret-manager",
     openapi_enabled: bool = True,
     lifespan: Lifespan[FastAPI] | None = None,
+    authenticate_api_key_use_case: AuthenticateApiKeyUseCase | None = None,
 ) -> FastAPI:
     docs_url = "/docs" if openapi_enabled else None
     openapi_url = "/openapi.json" if openapi_enabled else None
@@ -45,6 +49,11 @@ def create_app(
     app.include_router(vaults_router)
     app.include_router(projects_router)
     app.include_router(secrets_router)
+    app.include_router(identity_router)
+    app.add_middleware(
+        ApiKeyAuthenticationMiddleware,
+        authenticate_api_key_use_case=authenticate_api_key_use_case,
+    )
 
     return app
 

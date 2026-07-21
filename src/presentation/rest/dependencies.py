@@ -5,6 +5,27 @@ from typing import NoReturn
 from fastapi import HTTPException, status
 
 
+async def get_create_user_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="User persistence is not configured.",
+    )
+
+
+async def get_create_service_account_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="ServiceAccount persistence is not configured.",
+    )
+
+
+async def get_create_api_key_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="ApiKey persistence is not configured.",
+    )
+
+
 async def get_create_vault_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
