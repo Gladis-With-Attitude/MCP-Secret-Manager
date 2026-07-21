@@ -1,32 +1,41 @@
 PYTHON ?= python3
 COMPOSE ?= docker compose
-ENV_FILE ?= configs/local.env.example
+ENV_FILE ?= .env.example
 
-.PHONY: install-dev up down logs format lint typecheck test verify
+.PHONY: install-dev up up-db down logs logs-db format lint typecheck test verify
 
 install-dev:
-	$(PYTHON) -m pip install -e ".[dev]"
+	cd backend && $(PYTHON) -m pip install -e ".[dev]"
 
 up:
+	$(COMPOSE) --env-file $(ENV_FILE) up -d --build postgres backend frontend
+
+up-db:
 	$(COMPOSE) --env-file $(ENV_FILE) up -d postgres
 
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down
 
 logs:
+	$(COMPOSE) --env-file $(ENV_FILE) logs -f postgres backend frontend
+
+logs-db:
 	$(COMPOSE) --env-file $(ENV_FILE) logs -f postgres
 
 format:
-	$(PYTHON) -m ruff format .
+	cd backend && $(PYTHON) -m ruff format .
+	cd frontend && npm run format
 
 lint:
-	$(PYTHON) -m ruff format --check .
-	$(PYTHON) -m ruff check .
+	cd backend && $(PYTHON) -m ruff format --check .
+	cd backend && $(PYTHON) -m ruff check .
+	cd frontend && npm run lint
 
 typecheck:
-	$(PYTHON) -m mypy src tests
+	cd backend && $(PYTHON) -m mypy src tests
+	cd frontend && npm run typecheck
 
 test:
-	$(PYTHON) -m pytest
+	cd backend && $(PYTHON) -m pytest
 
 verify: lint typecheck test

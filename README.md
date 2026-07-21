@@ -3,20 +3,71 @@
 MCP Secret Manager is an open source, self-hosted secret manager for AI-first and
 MCP-native infrastructure.
 
-The official source of truth lives in `docs/`. Implementation work must follow
-the architecture, security model, testing strategy and accepted ADRs documented
-there.
+The repository is now organized as a monorepo:
 
-## Local Development
+- `backend/`: FastAPI backend, domain/application/infrastructure code, backend tests and backend docs.
+- `frontend/`: Next.js 15 frontend bootstrap, providers, styles and frontend docs.
+- `db/`: PostgreSQL migration assets.
+- `docker-compose.yml`: local orchestration for backend, frontend and database.
+
+## Installation
+
+Use Docker for local development. The host does not need Node.js/npm or Python
+dependencies installed to start the full stack.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-make install-dev
+cp .env.example .env
 make up
-make verify
 ```
 
-The local PostgreSQL service is configured through `configs/local.env.example`.
-Values in that file are development placeholders only and must not be used for
-production.
+## Scripts
+
+```bash
+make up       # build and start postgres, backend and frontend
+make up-db    # start postgres only
+make down     # stop the stack
+make logs     # follow all service logs
+make logs-db  # follow postgres logs only
+```
+
+Backend and frontend validation scripts remain available through their own
+directories when the corresponding toolchains are installed locally.
+
+Docker-based validation can be run with:
+
+```bash
+docker compose --env-file .env.example exec -T backend python -m pytest
+docker compose --env-file .env.example exec -T frontend npm run lint
+docker compose --env-file .env.example exec -T frontend npm run typecheck
+docker compose --env-file .env.example exec -T frontend npm run build
+```
+
+## Architecture
+
+The frontend uses Next.js 15, React 19, TypeScript, App Router, Tailwind CSS v4,
+shadcn/ui, TanStack Query, React Hook Form, Zod and Lucide.
+
+The backend remains a Clean Architecture FastAPI service. PostgreSQL runs as the
+local persistence service and migrations live in `db/migrations`.
+
+Backend documentation lives in `backend/docs/`. Frontend documentation lives in
+`frontend/docs/`.
+
+## Conventions
+
+- Keep backend code inside `backend/`.
+- Keep frontend code inside `frontend/`.
+- Keep database migrations inside `db/`.
+- Keep root files limited to orchestration and repository-level documentation.
+- Do not store real secrets in `.env.example`, assets, docs or tests.
+- Use Docker Compose as the default local workflow.
+
+## Start
+
+```bash
+make up
+```
+
+Frontend: `http://127.0.0.1:3000`
+
+Backend health: `http://127.0.0.1:8000/v1/health`

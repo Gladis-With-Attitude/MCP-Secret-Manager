@@ -1,0 +1,9 @@
+.next
+node_modules
+coverage
+htmlcov
+dist
+build
+.venv
+uv.lock
+package-lock.json

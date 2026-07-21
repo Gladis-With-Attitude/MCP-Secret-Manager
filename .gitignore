@@ -25,5 +25,11 @@ venv/
 .idea/
 .vscode/
 
+# Frontend
+.next/
+node_modules/
+out/
+*.tsbuildinfo
+
 # Docker
 postgres-data/
