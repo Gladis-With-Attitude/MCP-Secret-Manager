@@ -8,6 +8,7 @@ The repository is now organized as a monorepo:
 - `backend/`: FastAPI backend, domain/application/infrastructure code, backend tests and backend docs.
 - `frontend/`: Next.js 15 frontend bootstrap, providers, styles and frontend docs.
 - `db/`: PostgreSQL migration assets.
+- `docs/`: repository-level roadmap and cross-cutting project documentation.
 - `docker-compose.yml`: local orchestration for backend, frontend and database.
 
 ## Installation
@@ -103,7 +104,8 @@ infrastructure concern and is intentionally kept separate from REST routes and
 business use cases.
 
 Backend documentation lives in `backend/docs/`. Frontend documentation lives in
-`frontend/docs/`.
+`frontend/docs/`. The project delivery roadmap lives in
+`docs/PROJECT_ROADMAP.md`.
 
 ## Conventions
 

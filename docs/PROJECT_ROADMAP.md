@@ -1,0 +1,207 @@
+# MCP Secret Manager Project Roadmap
+
+This document is the project reference roadmap for making MCP Secret Manager
+ready to use on the target server.
+
+The roadmap focuses on end-to-end usability first, then complete validation,
+production hardening and release. A feature is not considered complete until it
+works across the full path:
+
+```text
+Frontend -> REST API -> Use Cases -> PostgreSQL -> Frontend
+```
+
+## Status Legend
+
+- ✅ Done
+- 🔄 In progress
+- ⏳ Planned
+
+## Phase B - End-to-End Integration
+
+Objective: make every core feature usable end to end.
+
+| ID | Status | Scope |
+| --- | --- | --- |
+| B1 | ✅ | Vault End-to-End Integration |
+| B2 | 🔄 | Project End-to-End Integration |
+| B3 | ⏳ | Secret End-to-End Integration |
+| B4 | ⏳ | Secret Version End-to-End Integration |
+| B5 | ⏳ | Authentication & Session End-to-End Integration |
+| B6 | ⏳ | API Keys End-to-End Integration |
+| B7 | ⏳ | RBAC End-to-End Integration |
+| B8 | ⏳ | Profile & Settings End-to-End Integration |
+| B9 | ⏳ | Audit End-to-End Integration |
+
+### Phase B Acceptance Rules
+
+Each Phase B item must provide:
+
+- frontend screens or flows connected to real backend data;
+- REST endpoints wired to application use cases;
+- persistence through PostgreSQL repositories and migrations when needed;
+- error handling for validation, authentication and permissions;
+- focused backend and frontend tests for the integrated behavior;
+- no mocked business data in the final user-facing flow.
+
+## Phase C - Complete System Validation
+
+Objective: validate the product as a complete system once all features are
+connected.
+
+### C1 - Complete End-to-End Test Suite
+
+Create complete scenarios covering:
+
+- Login
+- Vault creation
+- Project creation
+- Secret creation
+- Secret rotation
+- Secret read
+- API key creation
+- API key revocation
+- Audit log verification
+- Role management
+- Logout
+
+Required technologies:
+
+- Playwright
+- API tests
+- Integration tests
+
+### C2 - API Contract Validation
+
+Objectives:
+
+- verify that the frontend matches the OpenAPI contract exactly;
+- detect contract regressions;
+- generate clients if useful;
+- add contract tests.
+
+### C3 - Performance Validation
+
+Test:
+
+- pagination;
+- search;
+- audit queries;
+- secret operations;
+- API key operations;
+- concurrent users.
+
+### C4 - Security Validation
+
+Test in particular:
+
+- RBAC matrix;
+- forbidden access;
+- token leakage;
+- secret leakage;
+- authentication bypass;
+- rate limiting;
+- permission errors.
+
+## Phase D - Production Hardening
+
+Objective: transform the MVP into a production-ready product.
+
+### D1 - Observability
+
+- Structured logging
+- Request IDs
+- Metrics
+- Prometheus
+- Grafana
+- OpenTelemetry
+
+### D2 - Security Hardening
+
+- CSP
+- Security headers
+- Strict CORS
+- CSRF if cookies are used
+- Rate limiting
+- Secret scanning
+- Dependency scanning
+
+### D3 - CI/CD
+
+- GitHub Actions
+- Ruff
+- MyPy
+- Pytest
+- Frontend tests
+- Playwright
+- Docker build
+- Release pipeline
+
+### D4 - Deployment
+
+- Production Dockerfiles
+- Multi-stage builds
+- Non-root containers
+- Health checks
+- Readiness checks
+- Environment validation
+
+### D5 - Backup & Recovery
+
+- PostgreSQL backups
+- Restore procedure
+- Recovery tests
+- Rotation strategy
+- Disaster recovery documentation
+
+### D6 - Documentation
+
+Complete:
+
+- User Guide
+- Administrator Guide
+- Installation Guide
+- Deployment Guide
+- Backup Guide
+- Upgrade Guide
+- Troubleshooting Guide
+- API Documentation
+
+### D7 - Accessibility & UX
+
+- WCAG 2.2 AA
+- Keyboard navigation audit
+- Screen readers
+- Contrast validation
+- Responsive audit
+
+### D8 - Performance Optimisation
+
+- Code splitting
+- Lazy loading
+- Bundle optimisation
+- Query optimisation
+- Cache optimisation
+- Images
+- Fonts
+
+## Phase E - Release
+
+Objective: complete the final step before v1.0.
+
+### E1 - Release Candidate
+
+- Feature freeze
+- Bug fixes
+- Code cleanup
+- Security review
+- Documentation review
+
+### E2 - Version 1.0
+
+- Git tag
+- Changelog
+- Release notes
+- Docker images
+- Publication
+- Final documentation
