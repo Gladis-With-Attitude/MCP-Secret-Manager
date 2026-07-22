@@ -282,8 +282,8 @@ class ArchiveVaultUseCase:
                 if vault is None:
                     raise VaultNotFoundError("Vault not found.")
 
-                archived_vault = vault if vault.archived else await unit_of_work.vaults.update(
-                    vault.archive()
+                archived_vault = (
+                    vault if vault.archived else await unit_of_work.vaults.update(vault.archive())
                 )
                 await unit_of_work.commit()
         except Exception:

@@ -123,8 +123,7 @@ class InMemoryVaultRepository:
         exclude_vault_id: VaultId | None = None,
     ) -> bool:
         return any(
-            vault.name == name and vault.id != exclude_vault_id
-            for vault in self._vaults.values()
+            vault.name == name and vault.id != exclude_vault_id for vault in self._vaults.values()
         )
 
 
