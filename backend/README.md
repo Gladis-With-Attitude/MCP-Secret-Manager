@@ -29,3 +29,10 @@ From the repository root:
 make up
 docker compose --env-file .env.example exec -T backend python -m pytest
 ```
+
+The backend Docker image runs `infrastructure.bootstrap:app`, not the partial
+presentation-only application. The bootstrap validates configuration, connects to
+PostgreSQL, initializes repositories and use cases, injects the REST
+dependencies, and disposes the database engine during FastAPI shutdown.
+
+Migrations are not executed automatically during container startup.

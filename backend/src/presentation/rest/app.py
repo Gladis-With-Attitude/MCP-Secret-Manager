@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.types import Lifespan
 
-from application.health import get_liveness_status
+from application.health import HealthStatus, get_liveness_status
 from application.identity.use_cases import AuthenticateApiKeyUseCase
 from presentation.rest.audit import router as audit_router
 from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
@@ -20,6 +22,7 @@ def create_app(
     openapi_enabled: bool = True,
     lifespan: Lifespan[FastAPI] | None = None,
     authenticate_api_key_use_case: AuthenticateApiKeyUseCase | None = None,
+    health_check: Callable[[], Awaitable[HealthStatus]] | None = None,
 ) -> FastAPI:
     docs_url = "/docs" if openapi_enabled else None
     openapi_url = "/openapi.json" if openapi_enabled else None
@@ -43,8 +46,10 @@ def create_app(
         )
 
     @app.get("/v1/health", tags=["health"])
-    def health() -> dict[str, str]:
-        status = get_liveness_status(service_name)
+    async def health() -> dict[str, str]:
+        status = (
+            await health_check() if health_check is not None else get_liveness_status(service_name)
+        )
         return status.as_public_dict()
 
     app.include_router(vaults_router)

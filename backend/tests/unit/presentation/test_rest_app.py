@@ -20,4 +20,9 @@ def test_health_endpoint_returns_minimal_liveness_payload() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "test-service",
+        "api": "ok",
+        "configuration": "ok",
+        "database": "not_configured",
+        "repositories": "not_configured",
+        "use_cases": "not_configured",
     }

@@ -15,4 +15,4 @@ RUN python -m pip install --no-cache-dir -e ".[dev]"
 
 EXPOSE 8000
 
-CMD ["uvicorn", "presentation.rest.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "infrastructure.bootstrap:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import FastAPI
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from application.audit.use_cases import ListAuditEventsUseCase, PersistentAuditRecorder
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
+from application.health import HealthStatus
 from application.identity.use_cases import (
     AuthenticateApiKeyUseCase,
     CreateApiKeyUseCase,
@@ -49,10 +54,84 @@ from presentation.rest.dependencies import (
     get_list_secret_versions_use_case,
 )
 
+logger = logging.getLogger(__name__)
+
+
+class RuntimeHealthCheck:
+    def __init__(
+        self,
+        service_name: str,
+        configuration_valid: bool,
+        engine: AsyncEngine | None,
+        session_factory: async_sessionmaker[AsyncSession] | None,
+        use_cases_initialized: bool,
+    ) -> None:
+        self._service_name = service_name
+        self._configuration_valid = configuration_valid
+        self._engine = engine
+        self._session_factory = session_factory
+        self._use_cases_initialized = use_cases_initialized
+
+    async def __call__(self) -> HealthStatus:
+        database_status = await self._database_status()
+        repositories_status: Literal["not_configured", "ok"] = (
+            "ok" if self._session_factory is not None else "not_configured"
+        )
+        use_cases_status: Literal["not_configured", "ok"] = (
+            "ok" if self._use_cases_initialized else "not_configured"
+        )
+        configuration_status: Literal["invalid", "ok"] = (
+            "ok" if self._configuration_valid else "invalid"
+        )
+        status: Literal["degraded", "ok"] = (
+            "ok"
+            if database_status == "ok"
+            and repositories_status == "ok"
+            and use_cases_status == "ok"
+            and configuration_status == "ok"
+            else "degraded"
+        )
+
+        return HealthStatus(
+            status=status,
+            service=self._service_name,
+            api="ok",
+            configuration=configuration_status,
+            database=database_status,
+            repositories=repositories_status,
+            use_cases=use_cases_status,
+        )
+
+    async def _database_status(self) -> Literal["not_configured", "ok", "unavailable"]:
+        if self._engine is None:
+            return "not_configured"
+
+        try:
+            async with self._engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+        except Exception:
+            logger.exception("PostgreSQL health check failed.")
+            return "unavailable"
+
+        return "ok"
+
+
+async def verify_database_connection(engine: AsyncEngine | None) -> None:
+    if engine is None:
+        logger.warning("PostgreSQL is not configured.")
+        return
+
+    logger.info("Connecting to PostgreSQL.")
+    async with engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))
+    logger.info("✓ Base PostgreSQL connectée")
+
 
 def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     resolved_settings.validate_runtime()
+    logging.basicConfig(level=getattr(logging, resolved_settings.log_level))
+    logger.info("✓ Configuration chargée")
 
     engine = (
         create_database_engine(resolved_settings.database_url)
@@ -60,6 +139,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         else None
     )
     session_factory = create_session_factory(engine) if engine is not None else None
+    use_cases_initialized = session_factory is not None
     api_key_generator = SecureApiKeySecretGenerator()
     api_key_hasher = Argon2idApiKeyHasher()
     audit_recorder = (
@@ -81,16 +161,35 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         try:
+            await verify_database_connection(engine)
+            if session_factory is not None:
+                logger.info("✓ Repositories initialisés")
+            if use_cases_initialized:
+                logger.info("✓ Use Cases initialisés")
+            logger.info("✓ REST API prête")
+            logger.info("✓ MCP prêt (factory disponible)")
             yield
+        except Exception:
+            logger.exception("Backend startup failed.")
+            raise
         finally:
             if engine is not None:
+                logger.info("Closing PostgreSQL engine.")
                 await engine.dispose()
 
+    health_check = RuntimeHealthCheck(
+        service_name=resolved_settings.service_name,
+        configuration_valid=True,
+        engine=engine,
+        session_factory=session_factory,
+        use_cases_initialized=use_cases_initialized,
+    )
     app = create_app(
         service_name=resolved_settings.service_name,
         openapi_enabled=resolved_settings.openapi_enabled,
         lifespan=lifespan,
         authenticate_api_key_use_case=authenticate_api_key_use_case,
+        health_check=health_check,
     )
 
     if session_factory is not None:

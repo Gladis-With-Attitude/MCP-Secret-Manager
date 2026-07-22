@@ -42,6 +42,12 @@ docker compose --env-file .env.example exec -T frontend npm run typecheck
 docker compose --env-file .env.example exec -T frontend npm run build
 ```
 
+The backend container starts the fully bootstrapped FastAPI application from
+`infrastructure.bootstrap:app`. Runtime dependencies are wired to PostgreSQL
+repositories through dependency overrides. Database migrations are intentionally
+not run automatically by `docker compose up`; run Alembic explicitly in the
+dedicated migration slice/workflow.
+
 ## Architecture
 
 The frontend uses Next.js 15, React 19, TypeScript, App Router, Tailwind CSS v4,

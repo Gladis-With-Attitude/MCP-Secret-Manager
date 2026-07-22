@@ -21,3 +21,6 @@ make up
 
 Migration commands should be run from the repository root or from a container
 with access to both `backend/` and `db/` paths.
+
+The root Docker Compose stack does not run migrations automatically. This keeps
+runtime bootstrap separate from schema lifecycle management.
