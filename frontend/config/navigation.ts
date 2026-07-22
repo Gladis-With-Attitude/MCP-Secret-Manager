@@ -55,7 +55,8 @@ const navigationSections: NavigationSection[] = [
         label: "Secrets",
       },
       {
-        description: "API key management placeholder.",
+        activePathPatterns: ["/api-keys", "/api-keys/*"],
+        description: "API keys for agents and integrations.",
         href: "/api-keys",
         id: "api-keys",
         label: "API Keys",
