@@ -69,7 +69,8 @@ const navigationSections: NavigationSection[] = [
         label: "Audit Logs",
       },
       {
-        description: "Access control placeholder.",
+        activePathPatterns: ["/rbac", "/rbac/*"],
+        description: "Roles, permissions and assignments.",
         href: "/rbac",
         id: "rbac",
         label: "RBAC",
