@@ -31,7 +31,13 @@ from application.secret_version.use_cases import (
     GetActiveSecretVersionUseCase,
     ListSecretVersionsUseCase,
 )
-from application.vault.use_cases import CreateVaultUseCase, ListVaultsUseCase
+from application.vault.use_cases import (
+    ArchiveVaultUseCase,
+    CreateVaultUseCase,
+    GetVaultUseCase,
+    ListVaultsUseCase,
+    UpdateVaultUseCase,
+)
 from infrastructure.config import (
     AppSettings,
     ConfigurationError,
@@ -47,6 +53,7 @@ from presentation.mcp.tools import SecretManagerMcpTools
 from presentation.rest.app import create_app
 from presentation.rest.dependencies import (
     get_active_secret_version_use_case,
+    get_archive_vault_use_case,
     get_authorize_use_case,
     get_create_api_key_use_case,
     get_create_project_use_case,
@@ -57,6 +64,9 @@ from presentation.rest.dependencies import (
     get_create_vault_use_case,
     get_list_audit_events_use_case,
     get_list_secret_versions_use_case,
+    get_list_vaults_use_case,
+    get_update_vault_use_case,
+    get_vault_use_case,
 )
 
 logger = logging.getLogger(__name__)
@@ -210,6 +220,27 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 audit_recorder=audit_recorder,
             )
 
+        def list_vaults_use_case() -> ListVaultsUseCase:
+            return ListVaultsUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def build_get_vault_use_case() -> GetVaultUseCase:
+            return GetVaultUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def update_vault_use_case() -> UpdateVaultUseCase:
+            return UpdateVaultUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def archive_vault_use_case() -> ArchiveVaultUseCase:
+            return ArchiveVaultUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
         def create_user_use_case() -> CreateUserUseCase:
             return CreateUserUseCase(SqlAlchemyUnitOfWork(session_factory))
 
@@ -267,6 +298,10 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
             )
 
         app.dependency_overrides[get_create_vault_use_case] = create_vault_use_case
+        app.dependency_overrides[get_list_vaults_use_case] = list_vaults_use_case
+        app.dependency_overrides[get_vault_use_case] = build_get_vault_use_case
+        app.dependency_overrides[get_update_vault_use_case] = update_vault_use_case
+        app.dependency_overrides[get_archive_vault_use_case] = archive_vault_use_case
         app.dependency_overrides[get_create_user_use_case] = create_user_use_case
         app.dependency_overrides[get_create_service_account_use_case] = (
             create_service_account_use_case

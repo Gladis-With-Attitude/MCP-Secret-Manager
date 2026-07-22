@@ -47,6 +47,34 @@ async def get_create_vault_use_case() -> NoReturn:
     )
 
 
+async def get_list_vaults_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Vault persistence is not configured.",
+    )
+
+
+async def get_vault_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Vault persistence is not configured.",
+    )
+
+
+async def get_update_vault_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Vault persistence is not configured.",
+    )
+
+
+async def get_archive_vault_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Vault persistence is not configured.",
+    )
+
+
 async def get_create_project_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

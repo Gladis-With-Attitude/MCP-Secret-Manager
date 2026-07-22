@@ -35,10 +35,38 @@ class InMemoryVaultRepository:
     async def get(self, _vault_id: VaultId) -> Vault | None:
         return None
 
-    async def list(self) -> Sequence[Vault]:
+    async def update(self, _vault: Vault) -> Vault:
+        raise VaultRepositoryConflictError("Vault repository is not used in Secret REST tests.")
+
+    async def list(
+        self,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> Sequence[Vault]:
+        _ = include_archived, limit, offset, search, status
         return ()
 
-    async def exists_by_name(self, _name: VaultName) -> bool:
+    async def count(
+        self,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        _ = include_archived, search, status
+        return 0
+
+    async def exists_by_name(
+        self,
+        _name: VaultName,
+        *,
+        exclude_vault_id: VaultId | None = None,
+    ) -> bool:
+        _ = exclude_vault_id
         return False
 
 

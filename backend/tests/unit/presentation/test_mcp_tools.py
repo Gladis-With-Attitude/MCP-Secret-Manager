@@ -35,7 +35,13 @@ from application.secret_version.use_cases import (
     GetActiveSecretVersionUseCase,
     ListSecretVersionsUseCase,
 )
-from application.vault.dto import CreateVaultRequest, VaultResponse
+from application.vault.dto import (
+    CreateVaultRequest,
+    PaginationResponse,
+    VaultListResponse,
+    VaultPermissionsResponse,
+    VaultResponse,
+)
 from application.vault.use_cases import CreateVaultUseCase, ListVaultsUseCase
 from presentation.mcp.server import McpServer
 from presentation.mcp.tools import SecretManagerMcpTools
@@ -45,7 +51,8 @@ from presentation.mcp.types import (
     McpAuthorizationError,
 )
 from presentation.rest.app import create_app
-from presentation.rest.dependencies import get_create_vault_use_case
+from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
+from presentation.rest.dependencies import get_authorize_use_case, get_create_vault_use_case
 
 
 class FakeAuthenticateApiKeyUseCase:
@@ -78,8 +85,24 @@ class FakeAuthorizeUseCase:
 
 
 class FakeListVaultsUseCase:
-    async def execute(self) -> tuple[VaultResponse, ...]:
-        return (VaultResponse(id="vault-1", name="Production"),)
+    async def execute(self) -> VaultListResponse:
+        return VaultListResponse(
+            data=(VaultResponse(id="vault-1", name="Production"),),
+            pagination=PaginationResponse(
+                page=1,
+                page_size=20,
+                total=1,
+                has_next_page=False,
+                has_previous_page=False,
+            ),
+            permissions=VaultPermissionsResponse(
+                create=True,
+                read=True,
+                update=True,
+                archive=True,
+                lock=False,
+            ),
+        )
 
 
 class FakeCreateVaultUseCase:
@@ -365,7 +388,16 @@ def test_rest_and_mcp_create_vault_use_same_application_result() -> None:
         async def create_vault_dependency() -> AsyncIterator[FakeCreateVaultUseCase]:
             yield create_vault_use_case
 
+        async def authorize_dependency() -> AsyncIterator[FakeAuthorizeUseCase]:
+            yield FakeAuthorizeUseCase()
+
         app.dependency_overrides[get_create_vault_use_case] = create_vault_dependency
+        app.dependency_overrides[get_authorize_use_case] = authorize_dependency
+        app.dependency_overrides[get_authenticated_identity] = lambda: AuthenticatedIdentity(
+            id="9d14f3b1-38cc-4447-b69e-e7286fc59d1f",
+            type="user",
+            api_key_id="aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa",
+        )
 
         mcp_result = await server.call_tool(
             "create_vault",
@@ -377,6 +409,9 @@ def test_rest_and_mcp_create_vault_use_same_application_result() -> None:
             rest_response = await client.post("/v1/vaults", json={"name": "Production"})
 
         assert rest_response.status_code == 201
-        assert rest_response.json() == mcp_result.content
+        assert {
+            "id": rest_response.json()["id"],
+            "name": rest_response.json()["name"],
+        } == mcp_result.content
 
     anyio.run(run)

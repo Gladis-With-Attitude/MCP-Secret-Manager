@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from domain.vault.exceptions import VaultNameError
+from domain.vault.exceptions import VaultDescriptionError, VaultNameError
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,3 +49,25 @@ class VaultName:
 
     def __str__(self) -> str:
         return self.value
+
+
+@dataclass(frozen=True, slots=True)
+class VaultDescription:
+    value: str | None
+
+    MAX_LENGTH = 280
+
+    def __post_init__(self) -> None:
+        if self.value is None:
+            return
+
+        normalized = self.value.strip()
+        if not normalized:
+            object.__setattr__(self, "value", None)
+            return
+
+        if len(normalized) > self.MAX_LENGTH:
+            msg = f"Vault description must contain at most {self.MAX_LENGTH} characters."
+            raise VaultDescriptionError(msg)
+
+        object.__setattr__(self, "value", normalized)

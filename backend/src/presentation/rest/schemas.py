@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from application.audit.dto import AuditEventResponse
 from application.identity.dto import (
@@ -11,23 +11,103 @@ from application.identity.dto import (
 from application.project.dto import ProjectResponse
 from application.secret.dto import SecretResponse
 from application.secret_version.dto import SecretVersionResponse
-from application.vault.dto import VaultResponse
+from application.vault.dto import VaultListResponse, VaultResponse
 from domain.audit.entities import AuditMetadata
 
 
 class CreateVaultHttpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    description: str | None = None
     name: str
+
+
+class UpdateVaultHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = None
+    name: str
+
+
+class VaultPermissionHttpResponse(BaseModel):
+    archive: bool
+    create: bool
+    lock: bool
+    read: bool
+    update: bool
 
 
 class VaultHttpResponse(BaseModel):
+    archived: bool
+    archived_at: str | None
+    created_at: str
+    description: str | None
     id: str
+    locked: bool
     name: str
+    permissions: VaultPermissionHttpResponse | None = None
+    status: str
+    updated_at: str
 
     @classmethod
-    def from_application(cls, response: VaultResponse) -> VaultHttpResponse:
-        return cls(id=response.id, name=response.name)
+    def from_application(
+        cls,
+        response: VaultResponse,
+        permissions: VaultPermissionHttpResponse | None = None,
+    ) -> VaultHttpResponse:
+        return cls(
+            archived=response.archived,
+            archived_at=response.archived_at,
+            created_at=response.created_at,
+            description=response.description,
+            id=response.id,
+            locked=response.locked,
+            name=response.name,
+            permissions=permissions,
+            status=response.status,
+            updated_at=response.updated_at,
+        )
+
+
+class PaginationHttpResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    has_next_page: bool = Field(alias="hasNextPage")
+    has_previous_page: bool = Field(alias="hasPreviousPage")
+    page: int
+    page_size: int = Field(alias="pageSize")
+    total: int
+
+
+class VaultListHttpResponse(BaseModel):
+    data: list[VaultHttpResponse]
+    pagination: PaginationHttpResponse
+    permissions: VaultPermissionHttpResponse
+    success: bool = True
+
+    @classmethod
+    def from_application(cls, response: VaultListResponse) -> VaultListHttpResponse:
+        permissions = VaultPermissionHttpResponse(
+            archive=response.permissions.archive,
+            create=response.permissions.create,
+            lock=response.permissions.lock,
+            read=response.permissions.read,
+            update=response.permissions.update,
+        )
+        return cls(
+            data=[
+                VaultHttpResponse.from_application(item, permissions=permissions)
+                for item in response.data
+            ],
+            pagination=PaginationHttpResponse(
+                hasNextPage=response.pagination.has_next_page,
+                hasPreviousPage=response.pagination.has_previous_page,
+                page=response.pagination.page,
+                pageSize=response.pagination.page_size,
+                total=response.pagination.total,
+            ),
+            permissions=permissions,
+        )
 
 
 class CreateProjectHttpRequest(BaseModel):

@@ -177,7 +177,7 @@ class SecretManagerMcpTools:
         identity, _audit_context = await self._authenticate(auth_context)
         await self._authorize(identity, "vault.read", "global", None, auth_context)
         response = await self._list_vaults_use_case.execute()
-        return McpToolResult([self._vault(item) for item in response])
+        return McpToolResult([self._vault(item) for item in response.data])
 
     async def create_vault(
         self,

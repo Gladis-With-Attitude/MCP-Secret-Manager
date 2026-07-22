@@ -9,9 +9,26 @@ import pytest
 
 from application.audit.dto import AuditContext
 from application.unit_of_work import UnitOfWork
-from application.vault.dto import CreateVaultRequest
-from application.vault.exceptions import VaultAlreadyExistsError, VaultValidationError
-from application.vault.use_cases import CreateVaultUseCase
+from application.vault.dto import (
+    ArchiveVaultRequest,
+    CreateVaultRequest,
+    GetVaultRequest,
+    ListVaultsRequest,
+    UpdateVaultRequest,
+)
+from application.vault.exceptions import (
+    VaultAlreadyExistsError,
+    VaultArchivedError,
+    VaultNotFoundError,
+    VaultValidationError,
+)
+from application.vault.use_cases import (
+    ArchiveVaultUseCase,
+    CreateVaultUseCase,
+    GetVaultUseCase,
+    ListVaultsUseCase,
+    UpdateVaultUseCase,
+)
 from domain.audit.entities import AuditEvent
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
@@ -45,11 +62,70 @@ class InMemoryVaultRepository:
     async def get(self, vault_id: VaultId) -> Vault | None:
         return self._vaults.get(vault_id)
 
-    async def list(self) -> Sequence[Vault]:
-        return tuple(self._vaults.values())
+    async def update(self, vault: Vault) -> Vault:
+        if await self.exists_by_name(vault.name, exclude_vault_id=vault.id):
+            raise VaultRepositoryConflictError("Vault name already exists.")
+        self._vaults[vault.id] = vault
+        return vault
 
-    async def exists_by_name(self, name: VaultName) -> bool:
-        return any(vault.name == name for vault in self._vaults.values())
+    async def list(
+        self,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> Sequence[Vault]:
+        vaults = list(self._vaults.values())
+        if status == "archived":
+            vaults = [vault for vault in vaults if vault.archived]
+        elif status == "locked":
+            vaults = [vault for vault in vaults if vault.locked and not vault.archived]
+        elif status == "active":
+            vaults = [vault for vault in vaults if not vault.archived and not vault.locked]
+        elif not include_archived:
+            vaults = [vault for vault in vaults if not vault.archived]
+        if search:
+            normalized_search = search.lower()
+            vaults = [
+                vault
+                for vault in vaults
+                if normalized_search in vault.name.value.lower()
+                or (
+                    vault.description.value is not None
+                    and normalized_search in vault.description.value.lower()
+                )
+            ]
+        return tuple(vaults[offset : offset + limit])
+
+    async def count(
+        self,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        return len(
+            await self.list(
+                include_archived=include_archived,
+                limit=10_000,
+                offset=0,
+                search=search,
+                status=status,
+            )
+        )
+
+    async def exists_by_name(
+        self,
+        name: VaultName,
+        *,
+        exclude_vault_id: VaultId | None = None,
+    ) -> bool:
+        return any(
+            vault.name == name and vault.id != exclude_vault_id
+            for vault in self._vaults.values()
+        )
 
 
 class InMemoryProjectRepository:
@@ -171,6 +247,23 @@ def test_create_vault_use_case_creates_and_returns_vault_response() -> None:
     assert unit_of_work.rolled_back is False
 
 
+def test_create_vault_use_case_persists_optional_description() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        use_case = CreateVaultUseCase(unit_of_work)
+
+        response = await use_case.execute(
+            CreateVaultRequest(name="Production", description="  Primary boundary  ")
+        )
+
+        assert response.description == "Primary boundary"
+        assert response.status == "active"
+        assert response.archived is False
+
+    anyio.run(run)
+
+
 def test_create_vault_use_case_rejects_invalid_name() -> None:
     async def run() -> None:
         repository = InMemoryVaultRepository()
@@ -253,9 +346,124 @@ def test_create_vault_use_case_rejects_duplicate_name_before_creation() -> None:
     anyio.run(run)
 
 
+def test_list_vaults_use_case_returns_pagination_and_hides_archived_by_default() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        create_use_case = CreateVaultUseCase(unit_of_work)
+        archive_use_case = ArchiveVaultUseCase(unit_of_work)
+        list_use_case = ListVaultsUseCase(unit_of_work)
+
+        active = await create_use_case.execute(CreateVaultRequest(name="Production"))
+        archived = await create_use_case.execute(CreateVaultRequest(name="Legacy"))
+        await archive_use_case.execute(ArchiveVaultRequest(vault_id=archived.id))
+
+        response = await list_use_case.execute(ListVaultsRequest(page=1, page_size=10))
+
+        assert [vault.id for vault in response.data] == [active.id]
+        assert response.pagination.total == 1
+        assert response.permissions.archive is True
+
+    anyio.run(run)
+
+
+def test_get_vault_use_case_returns_metadata() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        created = await CreateVaultUseCase(unit_of_work).execute(
+            CreateVaultRequest(name="Production", description="Metadata")
+        )
+
+        response = await GetVaultUseCase(unit_of_work).execute(GetVaultRequest(vault_id=created.id))
+
+        assert response.id == created.id
+        assert response.description == "Metadata"
+
+    anyio.run(run)
+
+
+def test_get_vault_use_case_returns_not_found_for_unknown_vault() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+
+        with pytest.raises(VaultNotFoundError):
+            await GetVaultUseCase(unit_of_work).execute(
+                GetVaultRequest(vault_id=str(VaultId.new()))
+            )
+
+    anyio.run(run)
+
+
+def test_update_vault_use_case_updates_metadata_and_rejects_duplicates() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        create_use_case = CreateVaultUseCase(unit_of_work)
+        update_use_case = UpdateVaultUseCase(unit_of_work)
+        first = await create_use_case.execute(CreateVaultRequest(name="Production"))
+        await create_use_case.execute(CreateVaultRequest(name="Development"))
+
+        response = await update_use_case.execute(
+            UpdateVaultRequest(
+                vault_id=first.id,
+                name="Platform",
+                description="Updated metadata",
+            )
+        )
+
+        assert response.name == "Platform"
+        assert response.description == "Updated metadata"
+
+        with pytest.raises(VaultAlreadyExistsError):
+            await update_use_case.execute(UpdateVaultRequest(vault_id=first.id, name="Development"))
+
+    anyio.run(run)
+
+
+def test_update_vault_use_case_rejects_archived_vault() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        created = await CreateVaultUseCase(unit_of_work).execute(CreateVaultRequest(name="Legacy"))
+        await ArchiveVaultUseCase(unit_of_work).execute(ArchiveVaultRequest(vault_id=created.id))
+
+        with pytest.raises(VaultArchivedError):
+            await UpdateVaultUseCase(unit_of_work).execute(
+                UpdateVaultRequest(vault_id=created.id, name="Legacy Updated")
+            )
+
+    anyio.run(run)
+
+
+def test_archive_vault_use_case_marks_vault_archived_idempotently() -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        created = await CreateVaultUseCase(unit_of_work).execute(CreateVaultRequest(name="Legacy"))
+        archive_use_case = ArchiveVaultUseCase(unit_of_work)
+
+        first = await archive_use_case.execute(ArchiveVaultRequest(vault_id=created.id))
+        second = await archive_use_case.execute(ArchiveVaultRequest(vault_id=created.id))
+
+        assert first.archived is True
+        assert first.status == "archived"
+        assert second.archived is True
+        assert first.archived_at is not None
+
+    anyio.run(run)
+
+
 def test_create_vault_use_case_maps_repository_conflict_to_duplicate_error() -> None:
     class ConflictingVaultRepository(InMemoryVaultRepository):
-        async def exists_by_name(self, _name: VaultName) -> bool:
+        async def exists_by_name(
+            self,
+            _name: VaultName,
+            *,
+            exclude_vault_id: VaultId | None = None,
+        ) -> bool:
+            _ = exclude_vault_id
             return False
 
         async def create(self, _vault: Vault) -> Vault:

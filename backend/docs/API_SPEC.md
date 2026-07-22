@@ -534,6 +534,21 @@ Résultat attendu :
 
 Liste paginée de métadonnées de vaults.
 
+Paramètres supportés au MVP :
+
+- `page` ;
+- `page_size` ;
+- `search` ;
+- `status` avec `active`, `locked` ou `archived` ;
+- `archived` ;
+- `locked`.
+
+Réponse :
+
+- `data` contient les métadonnées non sensibles des vaults ;
+- `pagination` contient `page`, `pageSize`, `total`, `hasNextPage` et `hasPreviousPage` ;
+- `permissions` expose les actions applicables côté UX.
+
 #### POST /v1/vaults
 
 Objectif :
@@ -547,6 +562,16 @@ Permission :
 Résultat attendu :
 
 Vault créé avec état initial valide.
+
+Payload :
+
+- `name` ;
+- `description` optionnelle.
+
+Réponse :
+
+Métadonnées non sensibles du vault : `id`, `name`, `description`, `status`, `archived`, `locked`,
+`created_at`, `updated_at` et `archived_at`.
 
 #### GET /v1/vaults/{id}
 
@@ -562,6 +587,11 @@ Résultat attendu :
 
 Métadonnées du vault.
 
+Réponse :
+
+Métadonnées non sensibles du vault : `id`, `name`, `description`, `status`, `archived`, `locked`,
+`created_at`, `updated_at` et `archived_at`.
+
 #### PATCH /v1/vaults/{id}
 
 Objectif :
@@ -575,6 +605,11 @@ Permission :
 Résultat attendu :
 
 Vault mis à jour.
+
+Payload :
+
+- `name` ;
+- `description` optionnelle.
 
 #### POST /v1/vaults/{id}/lock
 
@@ -603,6 +638,9 @@ Permission :
 Résultat attendu :
 
 Le vault quitte l'usage normal.
+
+L'opération est idempotente. Par défaut, les vaults archivés ne sont plus retournés par
+`GET /v1/vaults` sans filtre d'archive explicite.
 
 ### Projects
 
@@ -1416,4 +1454,3 @@ L'API REST de MCP Secret Manager doit rester claire, stable et sûre.
 Elle expose des ressources compréhensibles, applique des permissions explicites, sépare métadonnées et valeurs secrètes, audite les opérations sensibles et refuse les comportements ambigus.
 
 Elle est l'une des interfaces principales du projet, mais elle n'est pas le coeur métier. Toute sa logique critique doit passer par l'Application Layer afin que REST, MCP, CLI et futurs SDKs partagent les mêmes garanties de sécurité.
-

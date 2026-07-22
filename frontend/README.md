@@ -59,6 +59,7 @@ npm run format:check
 - Use TanStack Query for server state only.
 - Use `lib/api/` for backend communication; components must not call `fetch` directly.
 - Keep API errors normalized through the shared error hierarchy.
+- Vault pages consume the real `/v1/vaults` REST contract for list, detail, create, update and archive.
 - Use `AuthProvider`, `useAuth`, `AuthGuard` and `GuestGuard` for session-aware UI boundaries.
 - Use the App Shell for authenticated route envelopes; feature pages should provide content, not duplicate navigation.
 - Keep authentication based on minimal session state; never store tokens or secrets in browser storage.

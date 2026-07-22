@@ -2,7 +2,9 @@ from __future__ import annotations
 
 AUDIT_ACTIONS: tuple[str, ...] = (
     "vault.create",
+    "vault.read",
     "vault.update",
+    "vault.archive",
     "vault.delete",
     "project.create",
     "secret.create",

@@ -41,11 +41,45 @@ class InMemoryVaultRepository:
     async def get(self, vault_id: VaultId) -> Vault | None:
         return self._vaults.get(vault_id)
 
-    async def list(self) -> Sequence[Vault]:
-        return tuple(self._vaults.values())
+    async def update(self, vault: Vault) -> Vault:
+        if await self.exists_by_name(vault.name, exclude_vault_id=vault.id):
+            raise VaultRepositoryConflictError("Vault name already exists.")
+        self._vaults[vault.id] = vault
+        return vault
 
-    async def exists_by_name(self, name: VaultName) -> bool:
-        return any(vault.name == name for vault in self._vaults.values())
+    async def list(
+        self,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> Sequence[Vault]:
+        _ = include_archived, search, status
+        vaults = tuple(self._vaults.values())
+        return vaults[offset : offset + limit]
+
+    async def count(
+        self,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        _ = include_archived, search, status
+        return len(self._vaults)
+
+    async def exists_by_name(
+        self,
+        name: VaultName,
+        *,
+        exclude_vault_id: VaultId | None = None,
+    ) -> bool:
+        return any(
+            vault.name == name and vault.id != exclude_vault_id
+            for vault in self._vaults.values()
+        )
 
 
 class InMemoryProjectRepository:

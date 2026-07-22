@@ -4,7 +4,7 @@ DEFAULT_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("vault.create", "Create vaults."),
     ("vault.read", "Read vault metadata."),
     ("vault.update", "Update vault metadata."),
-    ("vault.delete", "Delete vaults."),
+    ("vault.archive", "Archive vaults."),
     ("project.create", "Create projects."),
     ("project.read", "Read project metadata."),
     ("project.update", "Update project metadata."),

@@ -7,3 +7,7 @@ class VaultDomainError(ValueError):
 
 class VaultNameError(VaultDomainError):
     """Raised when a vault name violates domain invariants."""
+
+
+class VaultDescriptionError(VaultDomainError):
+    """Raised when a vault description violates domain invariants."""
