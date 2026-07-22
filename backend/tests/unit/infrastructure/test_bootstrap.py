@@ -69,10 +69,12 @@ def create_bootstrapped_app(monkeypatch: Any) -> tuple[FastAPI, FakeEngine]:
     )
 
     settings = AppSettings(
-        environment="local",
+        environment="development",
         database_url="postgresql+asyncpg://user:password@postgres:5432/app",
         master_key_base64="MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
         service_name="test-service",
+        bootstrap_admin_email="admin@example.local",
+        bootstrap_admin_name="Administrator",
     )
 
     return bootstrap.create_rest_app(settings), fake_engine

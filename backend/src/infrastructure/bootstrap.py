@@ -32,7 +32,12 @@ from application.secret_version.use_cases import (
     ListSecretVersionsUseCase,
 )
 from application.vault.use_cases import CreateVaultUseCase, ListVaultsUseCase
-from infrastructure.config import AppSettings, ConfigurationError, get_settings
+from infrastructure.config import (
+    AppSettings,
+    ConfigurationError,
+    get_settings,
+    log_safe_runtime_configuration,
+)
 from infrastructure.crypto import AesGcmCryptoProvider
 from infrastructure.identity import Argon2idApiKeyHasher, SecureApiKeySecretGenerator
 from infrastructure.persistence.database import create_database_engine, create_session_factory
@@ -129,8 +134,9 @@ async def verify_database_connection(engine: AsyncEngine | None) -> None:
 
 def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
-    resolved_settings.validate_runtime()
     logging.basicConfig(level=getattr(logging, resolved_settings.log_level))
+    resolved_settings.validate_runtime()
+    log_safe_runtime_configuration(resolved_settings)
     logger.info("✓ Configuration chargée")
 
     engine = (

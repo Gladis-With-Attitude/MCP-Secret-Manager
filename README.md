@@ -84,6 +84,12 @@ Seeds can be replayed manually with:
 make seed-run
 ```
 
+Runtime configuration is centralized under
+`backend/src/infrastructure/configuration/` and documented in
+`backend/docs/ENVIRONMENT.md`. The backend supports `development`, `test`,
+`staging` and `production`, validates critical settings at startup, and logs only
+non-sensitive configuration metadata.
+
 ## Architecture
 
 The frontend uses Next.js 15, React 19, TypeScript, App Router, Tailwind CSS v4,

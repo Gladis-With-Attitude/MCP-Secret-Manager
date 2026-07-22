@@ -62,10 +62,7 @@ def build_alembic_config(
 
 
 def migration_wait_timeout_seconds() -> int:
-    raw_value = os.environ.get("MCP_SECRET_MANAGER_MIGRATION_WAIT_TIMEOUT_SECONDS")
-    if raw_value is None:
-        return DEFAULT_WAIT_TIMEOUT_SECONDS
-    return int(raw_value)
+    return get_settings().migration_wait_timeout_seconds
 
 
 async def wait_for_postgresql(
@@ -100,8 +97,8 @@ async def wait_for_postgresql(
 
 
 async def reset_public_schema(settings: AppSettings) -> None:
-    if settings.environment not in {"local", "test"}:
-        msg = "Database reset is only allowed in local or test environments."
+    if settings.environment not in {"development", "test"}:
+        msg = "Database reset is only allowed in development or test environments."
         raise RuntimeError(msg)
     if os.environ.get("MCP_SECRET_MANAGER_ALLOW_DB_RESET") != "true":
         msg = "Set MCP_SECRET_MANAGER_ALLOW_DB_RESET=true to reset the development database."

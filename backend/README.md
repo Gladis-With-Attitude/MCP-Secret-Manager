@@ -65,3 +65,9 @@ The current backend runtime supports API-key authentication. If
 `MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY` is set, only its hash and prefix are
 stored; the raw key is never logged. Password bootstrap is reserved until
 password authentication is implemented.
+
+Runtime configuration is centralized in
+`backend/src/infrastructure/configuration/` and exposed through the compatibility
+facade `infrastructure.config`. Environment variables are documented in
+`backend/docs/ENVIRONMENT.md`; production deployment requirements are documented
+in `backend/docs/DEPLOYMENT.md`.

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from asyncio import run
 from logging import getLogger
@@ -49,10 +48,7 @@ def run_migrations_offline() -> None:
 
 
 def migration_lock_timeout_seconds() -> int:
-    raw_value = os.environ.get("MCP_SECRET_MANAGER_MIGRATION_LOCK_TIMEOUT_SECONDS")
-    if raw_value is None:
-        return DEFAULT_LOCK_TIMEOUT_SECONDS
-    return int(raw_value)
+    return get_settings().migration_lock_timeout_seconds
 
 
 def acquire_migration_lock(connection: Connection) -> None:

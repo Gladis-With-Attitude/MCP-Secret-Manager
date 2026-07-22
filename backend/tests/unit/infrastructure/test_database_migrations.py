@@ -51,7 +51,7 @@ def test_upgrade_waits_for_postgresql_before_running_alembic(
     database_migrations.upgrade(
         "head",
         settings=AppSettings(
-            environment="local",
+            environment="development",
             database_url="postgresql+asyncpg://user:password@postgres:5432/app",
         ),
         config_path=str(config_path),
@@ -66,7 +66,7 @@ def test_reset_public_schema_requires_development_environment() -> None:
         database_url="postgresql+asyncpg://user:password@postgres:5432/app",
     )
 
-    with pytest.raises(RuntimeError, match="only allowed in local or test"):
+    with pytest.raises(RuntimeError, match="only allowed in development or test"):
         asyncio.run(database_migrations.reset_public_schema(settings))
 
 
@@ -75,7 +75,7 @@ def test_reset_public_schema_requires_explicit_confirmation(
 ) -> None:
     monkeypatch.delenv("MCP_SECRET_MANAGER_ALLOW_DB_RESET", raising=False)
     settings = AppSettings(
-        environment="local",
+        environment="development",
         database_url="postgresql+asyncpg://user:password@postgres:5432/app",
     )
 

@@ -63,6 +63,9 @@ MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_NAME=
 MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_API_KEY=
 ```
 
+The default local environment is `development`. Runtime configuration validation
+is documented in `backend/docs/ENVIRONMENT.md`.
+
 `MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY` and
 `MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_API_KEY` must never contain real
 production secrets in committed files. When provided, raw API keys are hashed

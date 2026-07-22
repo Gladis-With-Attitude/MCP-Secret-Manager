@@ -172,6 +172,12 @@ Le host ne doit pas avoir besoin d'installer les dépendances Python ou Node.js 
 
 Les commandes Python locales restent possibles depuis `backend/` lorsqu'un environnement Python est volontairement installé. Les commandes npm locales restent possibles depuis `frontend/` lorsqu'un environnement Node.js est volontairement installé. Elles ne remplacent pas le workflow Docker recommandé.
 
+La configuration runtime backend est centralisée dans
+`backend/src/infrastructure/configuration/`. Les environnements supportés sont
+`development`, `test`, `staging` et `production`. Toute nouvelle variable
+d'environnement doit être typée, validée et documentée dans
+`backend/docs/ENVIRONMENT.md`.
+
 Les migrations PostgreSQL vivent sous `db/migrations/` et leur configuration Alembic sous `db/alembic.ini`.
 
 En développement local, `docker compose up` exécute automatiquement
