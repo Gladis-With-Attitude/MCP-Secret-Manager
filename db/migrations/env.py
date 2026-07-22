@@ -25,6 +25,10 @@ if config.config_file_name is not None:
 
 
 def get_database_url() -> str:
+    configured_url = config.get_main_option("sqlalchemy.url")
+    if configured_url is not None and configured_url.strip() != "":
+        return configured_url
+
     settings = get_settings()
     if settings.database_url is None:
         msg = "MCP_SECRET_MANAGER_DATABASE_URL is required to run migrations."

@@ -29,6 +29,8 @@ services:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
+      bootstrap:
+        condition: service_completed_successfully
     environment:
       MCP_SECRET_MANAGER_ENVIRONMENT: local
       MCP_SECRET_MANAGER_SERVICE_NAME: mcp-secret-manager
@@ -42,6 +44,36 @@ services:
       MCP_SECRET_MANAGER_MASTER_KEY_VERSION: 1
     ports:
       - "127.0.0.1:${MCP_SECRET_MANAGER_REST_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    networks:
+      - mcp_secret_manager
+
+  bootstrap:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    environment:
+      MCP_SECRET_MANAGER_ENVIRONMENT: local
+      MCP_SECRET_MANAGER_SERVICE_NAME: mcp-secret-manager
+      MCP_SECRET_MANAGER_LOG_LEVEL: INFO
+      MCP_SECRET_MANAGER_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mcp_secret_manager}:${POSTGRES_PASSWORD:-mcp_secret_manager_dev_password}@postgres:5432/${POSTGRES_DB:-mcp_secret_manager}
+      MCP_SECRET_MANAGER_BOOTSTRAP_ENABLED: ${MCP_SECRET_MANAGER_BOOTSTRAP_ENABLED:-true}
+      MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_EMAIL: ${MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_EMAIL:-admin@example.local}
+      MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_NAME: ${MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_NAME:-Administrator}
+      MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_PASSWORD: ${MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_PASSWORD:-}
+      MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY: ${MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY:-}
+      MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_ENABLED: ${MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_ENABLED:-false}
+      MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_PROJECT_ID: ${MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_PROJECT_ID:-}
+      MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_NAME: ${MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_NAME:-}
+      MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_API_KEY: ${MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_API_KEY:-}
+    command: ["sh", "/app/scripts/bootstrap-system.sh"]
     volumes:
       - ./backend:/app
     networks:

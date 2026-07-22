@@ -29,6 +29,15 @@ class AppSettings(BaseSettings):
     rest_port: int = Field(default=8000, ge=1, le=65535)
     openapi_enabled: bool = True
     audit_retention_days: int = Field(default=365, ge=1)
+    bootstrap_enabled: bool = True
+    bootstrap_admin_email: str | None = None
+    bootstrap_admin_name: str | None = None
+    bootstrap_admin_password: str | None = None
+    bootstrap_admin_api_key: str | None = None
+    bootstrap_service_account_enabled: bool = False
+    bootstrap_service_account_project_id: str | None = None
+    bootstrap_service_account_name: str | None = None
+    bootstrap_service_account_api_key: str | None = None
 
     def validate_runtime(self) -> None:
         if self.environment != "production":

@@ -28,12 +28,14 @@ make up-db    # start postgres only
 make down     # stop the stack
 make logs     # follow all service logs
 make logs-db  # follow postgres logs only
+make logs-bootstrap
 make db-current
 make db-history
 make db-upgrade
 make db-downgrade DB_DOWN_REVISION=-1
 make db-revision DB_REVISION_MESSAGE="describe change"
 make db-reset CONFIRM_RESET=dev
+make seed-run
 ```
 
 Backend and frontend validation scripts remain available through their own
@@ -57,6 +59,31 @@ waits for PostgreSQL, executes `alembic upgrade head` with a PostgreSQL advisory
 lock, and fails the stack startup if migrations fail. No manual migration step is
 needed for local development.
 
+After migrations, Compose runs a one-shot `bootstrap` service before the backend.
+It initializes system permissions, default roles and the initial administrator
+idempotently. Re-running it does not duplicate system data.
+
+Initial administrator data is configured through `.env`:
+
+```bash
+MCP_SECRET_MANAGER_BOOTSTRAP_ENABLED=true
+MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_EMAIL=admin@example.local
+MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_NAME=Administrator
+MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY=
+```
+
+`MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY` is optional and must be supplied by
+the operator when API-key access is required. The value is hashed before storage
+and is never logged. Password authentication is not implemented in the current
+runtime, so `MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_PASSWORD` is reserved for future
+auth wiring and is not persisted.
+
+Seeds can be replayed manually with:
+
+```bash
+make seed-run
+```
+
 ## Architecture
 
 The frontend uses Next.js 15, React 19, TypeScript, App Router, Tailwind CSS v4,
@@ -64,6 +91,10 @@ shadcn/ui, TanStack Query, React Hook Form, Zod and Lucide.
 
 The backend remains a Clean Architecture FastAPI service. PostgreSQL runs as the
 local persistence service and migrations live in `db/migrations`.
+
+System data bootstrap lives in `backend/src/infrastructure/seed/`. It is an
+infrastructure concern and is intentionally kept separate from REST routes and
+business use cases.
 
 Backend documentation lives in `backend/docs/`. Frontend documentation lives in
 `frontend/docs/`.

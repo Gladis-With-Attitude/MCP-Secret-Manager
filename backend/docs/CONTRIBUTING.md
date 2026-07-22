@@ -164,6 +164,7 @@ Le stack local démarre :
 
 - `postgres` pour PostgreSQL ;
 - `migrations` pour appliquer automatiquement le schéma Alembic ;
+- `bootstrap` pour initialiser les données système minimales ;
 - `backend` pour l'API FastAPI ;
 - `frontend` pour l'application Next.js.
 
@@ -177,6 +178,12 @@ En développement local, `docker compose up` exécute automatiquement
 `alembic upgrade head` via le service one-shot `migrations` avant de démarrer le
 backend. Les migrations sont sérialisées par un verrou advisory PostgreSQL.
 
+Après les migrations, `docker compose up` exécute automatiquement le service
+one-shot `bootstrap`. Ce service initialise les permissions système, les rôles
+par défaut et l'administrateur configuré. Les seeds sont idempotents : une
+deuxième exécution ne crée ni doublon de permissions, ni doublon de rôles, ni
+second administrateur.
+
 Commandes utiles :
 
 ```bash
@@ -186,10 +193,25 @@ make db-upgrade
 make db-downgrade DB_DOWN_REVISION=-1
 make db-revision DB_REVISION_MESSAGE="describe change"
 make db-reset CONFIRM_RESET=dev
+make seed-run
 ```
 
 `make db-reset CONFIRM_RESET=dev` est destructif et réservé au développement :
 il supprime le schéma `public`, le recrée, puis rejoue toutes les migrations.
+
+`make seed-run` rejoue uniquement les seeds système sur une base déjà migrée.
+Le bootstrap est configurable par variables d'environnement :
+
+- `MCP_SECRET_MANAGER_BOOTSTRAP_ENABLED` active ou désactive les seeds ;
+- `MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_EMAIL` définit l'email de l'administrateur initial ;
+- `MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_NAME` définit son nom affiché ;
+- `MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY` permet de créer une clé API administrateur initiale ;
+- `MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_PASSWORD` est réservé au futur login mot de passe et n'est pas persisté aujourd'hui ;
+- `MCP_SECRET_MANAGER_BOOTSTRAP_SERVICE_ACCOUNT_*` configure le seed optionnel de service account.
+
+Aucune valeur de clé API bootstrap ne doit être committée. Le backend stocke
+uniquement le préfixe et le hash de la clé, et ne journalise jamais la valeur
+brute.
 
 ### Issue
 

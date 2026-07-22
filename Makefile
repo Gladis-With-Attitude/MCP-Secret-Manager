@@ -5,7 +5,7 @@ DB_DOWN_REVISION ?= -1
 DB_REVISION_MESSAGE ?= database change
 DB_AUTOGENERATE ?= false
 
-.PHONY: install-dev up up-db down logs logs-db db-upgrade db-downgrade db-current db-history db-revision db-reset format lint typecheck test verify
+.PHONY: install-dev up up-db down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run format lint typecheck test verify
 
 install-dev:
 	cd backend && $(PYTHON) -m pip install -e ".[dev]"
@@ -20,10 +20,16 @@ down:
 	$(COMPOSE) --env-file $(ENV_FILE) down
 
 logs:
-	$(COMPOSE) --env-file $(ENV_FILE) logs -f postgres backend frontend
+	$(COMPOSE) --env-file $(ENV_FILE) logs -f postgres migrations bootstrap backend frontend
 
 logs-db:
 	$(COMPOSE) --env-file $(ENV_FILE) logs -f postgres
+
+logs-bootstrap:
+	$(COMPOSE) --env-file $(ENV_FILE) logs -f bootstrap
+
+seed-run:
+	$(COMPOSE) --env-file $(ENV_FILE) run --rm bootstrap sh /app/scripts/bootstrap-system.sh
 
 db-upgrade:
 	$(COMPOSE) --env-file $(ENV_FILE) run --rm migrations sh /app/scripts/manage-db.sh upgrade

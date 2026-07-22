@@ -48,10 +48,16 @@ def find_alembic_config(explicit_path: str | None = None) -> Path:
     raise RuntimeError(msg)
 
 
-def build_alembic_config(config_path: str | None = None) -> Config:
+def build_alembic_config(
+    config_path: str | None = None,
+    *,
+    database_url: str | None = None,
+) -> Config:
     path = find_alembic_config(config_path)
     config = Config(str(path))
     config.set_main_option("script_location", str(path.parent / "migrations"))
+    if database_url is not None:
+        config.set_main_option("sqlalchemy.url", database_url)
     return config
 
 
@@ -126,7 +132,10 @@ def upgrade(
 
     logger.info("✓ Migration détectée")
     logger.info("✓ Upgrade vers %s", revision)
-    command.upgrade(build_alembic_config(config_path), revision)
+    command.upgrade(
+        build_alembic_config(config_path, database_url=resolved_settings.database_url),
+        revision,
+    )
     configure_logging()
     logger.info("✓ Base synchronisée")
 
@@ -141,7 +150,10 @@ def downgrade(
     asyncio.run(wait_for_postgresql(resolved_settings, migration_wait_timeout_seconds()))
 
     logger.info("Downgrade vers %s", revision)
-    command.downgrade(build_alembic_config(config_path), revision)
+    command.downgrade(
+        build_alembic_config(config_path, database_url=resolved_settings.database_url),
+        revision,
+    )
     configure_logging()
     logger.info("✓ Base synchronisée")
 
@@ -150,7 +162,10 @@ def current(*, settings: AppSettings | None = None, config_path: str | None = No
     resolved_settings = settings or get_settings()
     asyncio.run(wait_for_postgresql(resolved_settings, migration_wait_timeout_seconds()))
 
-    command.current(build_alembic_config(config_path), verbose=True)
+    command.current(
+        build_alembic_config(config_path, database_url=resolved_settings.database_url),
+        verbose=True,
+    )
 
 
 def history(*, config_path: str | None = None) -> None:
@@ -169,7 +184,7 @@ def revision(
         asyncio.run(wait_for_postgresql(resolved_settings, migration_wait_timeout_seconds()))
 
     command.revision(
-        build_alembic_config(config_path),
+        build_alembic_config(config_path, database_url=resolved_settings.database_url),
         message=message,
         autogenerate=autogenerate,
     )
@@ -181,7 +196,10 @@ def reset(*, settings: AppSettings | None = None, config_path: str | None = None
     asyncio.run(reset_public_schema(resolved_settings))
 
     logger.info("✓ Upgrade vers head")
-    command.upgrade(build_alembic_config(config_path), "head")
+    command.upgrade(
+        build_alembic_config(config_path, database_url=resolved_settings.database_url),
+        "head",
+    )
     configure_logging()
     logger.info("✓ Base synchronisée")
 
