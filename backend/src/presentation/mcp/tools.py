@@ -205,7 +205,7 @@ class SecretManagerMcpTools:
         identity, _audit_context = await self._authenticate(auth_context)
         await self._authorize(identity, "project.read", "vault", vault_id, auth_context)
         response = await self._call_application(self._list_projects_use_case.execute(vault_id))
-        return McpToolResult([self._project(item) for item in response])
+        return McpToolResult([self._project(item) for item in response.data])
 
     async def create_project(
         self,
@@ -220,6 +220,7 @@ class SecretManagerMcpTools:
                 CreateProjectRequest(
                     vault_id=vault_id,
                     name=self._required_string(arguments, "name"),
+                    description=self._optional_string(arguments, "description"),
                     audit_context=audit_context,
                 )
             )

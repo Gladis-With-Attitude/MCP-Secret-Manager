@@ -8,7 +8,7 @@ from application.identity.dto import (
     ServiceAccountResponse,
     UserResponse,
 )
-from application.project.dto import ProjectResponse
+from application.project.dto import ProjectListResponse, ProjectResponse
 from application.secret.dto import SecretResponse
 from application.secret_version.dto import SecretVersionResponse
 from application.vault.dto import VaultListResponse, VaultResponse
@@ -113,17 +113,84 @@ class VaultListHttpResponse(BaseModel):
 class CreateProjectHttpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    description: str | None = None
     name: str
+
+
+class UpdateProjectHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = None
+    name: str
+
+
+class ProjectPermissionHttpResponse(BaseModel):
+    archive: bool
+    create: bool
+    read: bool
+    update: bool
 
 
 class ProjectHttpResponse(BaseModel):
+    archived: bool
+    archived_at: str | None
+    created_at: str
+    description: str | None
     id: str
-    vault_id: str
     name: str
+    permissions: ProjectPermissionHttpResponse | None = None
+    status: str
+    updated_at: str
+    vault_id: str
 
     @classmethod
-    def from_application(cls, response: ProjectResponse) -> ProjectHttpResponse:
-        return cls(id=response.id, vault_id=response.vault_id, name=response.name)
+    def from_application(
+        cls,
+        response: ProjectResponse,
+        permissions: ProjectPermissionHttpResponse | None = None,
+    ) -> ProjectHttpResponse:
+        return cls(
+            archived=response.archived,
+            archived_at=response.archived_at,
+            created_at=response.created_at,
+            description=response.description,
+            id=response.id,
+            name=response.name,
+            permissions=permissions,
+            status=response.status,
+            updated_at=response.updated_at,
+            vault_id=response.vault_id,
+        )
+
+
+class ProjectListHttpResponse(BaseModel):
+    data: list[ProjectHttpResponse]
+    pagination: PaginationHttpResponse
+    permissions: ProjectPermissionHttpResponse
+    success: bool = True
+
+    @classmethod
+    def from_application(cls, response: ProjectListResponse) -> ProjectListHttpResponse:
+        permissions = ProjectPermissionHttpResponse(
+            archive=response.permissions.archive,
+            create=response.permissions.create,
+            read=response.permissions.read,
+            update=response.permissions.update,
+        )
+        return cls(
+            data=[
+                ProjectHttpResponse.from_application(item, permissions=permissions)
+                for item in response.data
+            ],
+            pagination=PaginationHttpResponse(
+                hasNextPage=response.pagination.has_next_page,
+                hasPreviousPage=response.pagination.has_previous_page,
+                page=response.pagination.page,
+                pageSize=response.pagination.page_size,
+                total=response.pagination.total,
+            ),
+            permissions=permissions,
+        )
 
 
 class CreateSecretHttpRequest(BaseModel):

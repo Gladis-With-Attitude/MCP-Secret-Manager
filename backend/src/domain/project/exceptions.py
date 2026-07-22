@@ -7,3 +7,7 @@ class ProjectDomainError(ValueError):
 
 class ProjectNameError(ProjectDomainError):
     """Raised when a project name violates domain invariants."""
+
+
+class ProjectDescriptionError(ProjectDomainError):
+    """Raised when a project description violates domain invariants."""

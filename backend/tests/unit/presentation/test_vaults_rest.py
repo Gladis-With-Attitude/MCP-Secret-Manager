@@ -118,10 +118,41 @@ class InMemoryProjectRepository:
     async def get(self, _project_id: ProjectId) -> Project | None:
         return None
 
-    async def list_by_vault(self, _vault_id: VaultId) -> Sequence[Project]:
+    async def update(self, project: Project) -> Project:
+        return project
+
+    async def list_by_vault(
+        self,
+        _vault_id: VaultId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> Sequence[Project]:
+        _ = include_archived, limit, offset, search, status
         return ()
 
-    async def exists_in_vault(self, _vault_id: VaultId, _name: ProjectName) -> bool:
+    async def count_by_vault(
+        self,
+        _vault_id: VaultId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        _ = include_archived, search, status
+        return 0
+
+    async def exists_in_vault(
+        self,
+        _vault_id: VaultId,
+        _name: ProjectName,
+        *,
+        exclude_project_id: ProjectId | None = None,
+    ) -> bool:
+        _ = exclude_project_id
         return False
 
 
