@@ -82,13 +82,15 @@ const navigationSections: NavigationSection[] = [
     label: "Account",
     items: [
       {
-        description: "Profile placeholder.",
+        activePathPatterns: ["/profile"],
+        description: "Account profile and session security.",
         href: "/profile",
         id: "profile",
         label: "Profile",
       },
       {
-        description: "Settings placeholder.",
+        activePathPatterns: ["/settings", "/settings/*"],
+        description: "Preferences, notifications and safe settings.",
         href: "/settings",
         id: "settings",
         label: "Settings",
