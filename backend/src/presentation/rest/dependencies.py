@@ -82,6 +82,34 @@ async def get_create_project_use_case() -> NoReturn:
     )
 
 
+async def get_list_projects_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Project persistence is not configured.",
+    )
+
+
+async def get_project_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Project persistence is not configured.",
+    )
+
+
+async def get_update_project_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Project persistence is not configured.",
+    )
+
+
+async def get_archive_project_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Project persistence is not configured.",
+    )
+
+
 async def get_create_secret_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

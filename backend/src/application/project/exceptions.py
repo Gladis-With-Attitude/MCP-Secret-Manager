@@ -13,5 +13,13 @@ class VaultNotFoundError(ProjectApplicationError):
     """Raised when the parent Vault does not exist."""
 
 
+class ProjectNotFoundError(ProjectApplicationError):
+    """Raised when a Project does not exist."""
+
+
 class ProjectAlreadyExistsError(ProjectApplicationError):
     """Raised when a Project with the same name already exists in a Vault."""
+
+
+class ProjectArchivedError(ProjectApplicationError):
+    """Raised when mutating an archived Project is forbidden."""

@@ -99,12 +99,60 @@ class InMemoryProjectRepository:
     async def get(self, project_id: ProjectId) -> Project | None:
         return self._projects.get(project_id)
 
-    async def list_by_vault(self, vault_id: VaultId) -> Sequence[Project]:
-        return tuple(project for project in self._projects.values() if project.vault_id == vault_id)
+    async def update(self, project: Project) -> Project:
+        self._projects[project.id] = project
+        return project
 
-    async def exists_in_vault(self, vault_id: VaultId, name: ProjectName) -> bool:
+    async def list_by_vault(
+        self,
+        vault_id: VaultId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> Sequence[Project]:
+        _ = search
+        projects = tuple(
+            project for project in self._projects.values() if project.vault_id == vault_id
+        )
+        if status == "archived":
+            projects = tuple(project for project in projects if project.archived)
+        elif status == "active" or not include_archived:
+            projects = tuple(project for project in projects if not project.archived)
+        return projects[offset : offset + limit]
+
+    async def count_by_vault(
+        self,
+        vault_id: VaultId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        return len(
+            await self.list_by_vault(
+                vault_id,
+                include_archived=include_archived,
+                limit=1000,
+                offset=0,
+                search=search,
+                status=status,
+            )
+        )
+
+    async def exists_in_vault(
+        self,
+        vault_id: VaultId,
+        name: ProjectName,
+        *,
+        exclude_project_id: ProjectId | None = None,
+    ) -> bool:
         return any(
-            project.vault_id == vault_id and project.name == name
+            project.vault_id == vault_id
+            and project.name == name
+            and project.id != exclude_project_id
             for project in self._projects.values()
         )
 
@@ -301,7 +349,14 @@ def test_create_project_use_case_allows_same_name_in_different_vaults() -> None:
 
 def test_create_project_use_case_maps_repository_conflict_to_duplicate_error() -> None:
     class ConflictingProjectRepository(InMemoryProjectRepository):
-        async def exists_in_vault(self, _vault_id: VaultId, _name: ProjectName) -> bool:
+        async def exists_in_vault(
+            self,
+            _vault_id: VaultId,
+            _name: ProjectName,
+            *,
+            exclude_project_id: ProjectId | None = None,
+        ) -> bool:
+            _ = exclude_project_id
             return False
 
         async def create(self, _project: Project) -> Project:

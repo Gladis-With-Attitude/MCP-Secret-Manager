@@ -18,7 +18,13 @@ from application.identity.use_cases import (
     CreateServiceAccountUseCase,
     CreateUserUseCase,
 )
-from application.project.use_cases import CreateProjectUseCase, ListProjectsUseCase
+from application.project.use_cases import (
+    ArchiveProjectUseCase,
+    CreateProjectUseCase,
+    GetProjectUseCase,
+    ListProjectsUseCase,
+    UpdateProjectUseCase,
+)
 from application.rbac.use_cases import AuthorizeUseCase, PermissionChecker
 from application.secret.use_cases import (
     CreateSecretUseCase,
@@ -53,6 +59,7 @@ from presentation.mcp.tools import SecretManagerMcpTools
 from presentation.rest.app import create_app
 from presentation.rest.dependencies import (
     get_active_secret_version_use_case,
+    get_archive_project_use_case,
     get_archive_vault_use_case,
     get_authorize_use_case,
     get_create_api_key_use_case,
@@ -63,8 +70,11 @@ from presentation.rest.dependencies import (
     get_create_user_use_case,
     get_create_vault_use_case,
     get_list_audit_events_use_case,
+    get_list_projects_use_case,
     get_list_secret_versions_use_case,
     get_list_vaults_use_case,
+    get_project_use_case,
+    get_update_project_use_case,
     get_update_vault_use_case,
     get_vault_use_case,
 )
@@ -270,6 +280,27 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 audit_recorder=audit_recorder,
             )
 
+        def list_projects_use_case() -> ListProjectsUseCase:
+            return ListProjectsUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def build_get_project_use_case() -> GetProjectUseCase:
+            return GetProjectUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def update_project_use_case() -> UpdateProjectUseCase:
+            return UpdateProjectUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def archive_project_use_case() -> ArchiveProjectUseCase:
+            return ArchiveProjectUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
         def create_secret_use_case() -> CreateSecretUseCase:
             return CreateSecretUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
@@ -310,6 +341,10 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         app.dependency_overrides[get_authorize_use_case] = authorize_use_case
         app.dependency_overrides[get_list_audit_events_use_case] = list_audit_events_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case
+        app.dependency_overrides[get_list_projects_use_case] = list_projects_use_case
+        app.dependency_overrides[get_project_use_case] = build_get_project_use_case
+        app.dependency_overrides[get_update_project_use_case] = update_project_use_case
+        app.dependency_overrides[get_archive_project_use_case] = archive_project_use_case
         app.dependency_overrides[get_create_secret_use_case] = create_secret_use_case
         app.dependency_overrides[get_create_secret_version_use_case] = (
             create_secret_version_use_case

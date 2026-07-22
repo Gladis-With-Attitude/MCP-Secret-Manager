@@ -11,7 +11,15 @@ from application.audit.dto import AuditContext
 from application.identity.dto import AuthenticatedIdentityResponse
 from application.identity.exceptions import AuthenticationFailedError
 from application.identity.use_cases import AuthenticateApiKeyUseCase
-from application.project.dto import CreateProjectRequest, ProjectResponse
+from application.project.dto import (
+    CreateProjectRequest,
+    ProjectListResponse,
+    ProjectPermissionsResponse,
+    ProjectResponse,
+)
+from application.project.dto import (
+    PaginationResponse as ProjectPaginationResponse,
+)
 from application.project.use_cases import CreateProjectUseCase, ListProjectsUseCase
 from application.rbac.dto import AuthorizationDecision, RequirePermission
 from application.rbac.exceptions import AuthorizationDeniedError
@@ -115,8 +123,24 @@ class FakeCreateVaultUseCase:
 
 
 class FakeListProjectsUseCase:
-    async def execute(self, vault_id: str) -> tuple[ProjectResponse, ...]:
-        return (ProjectResponse(id="project-1", vault_id=vault_id, name="API"),)
+    async def execute(self, vault_id: str) -> ProjectListResponse:
+        return ProjectListResponse(
+            data=(ProjectResponse(id="project-1", vault_id=vault_id, name="API"),),
+            pagination=ProjectPaginationResponse(
+                page=1,
+                page_size=20,
+                total=1,
+                has_next_page=False,
+                has_previous_page=False,
+            ),
+            permissions=ProjectPermissionsResponse(
+                create=True,
+                read=True,
+                update=True,
+                archive=True,
+                delete=False,
+            ),
+        )
 
 
 class FakeCreateProjectUseCase:
