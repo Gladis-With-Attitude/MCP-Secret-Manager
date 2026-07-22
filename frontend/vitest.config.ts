@@ -11,6 +11,10 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    env: {
+      NEXT_PUBLIC_API_BASE_URL: "http://api.example.test",
+      NEXT_PUBLIC_APP_ENV: "test",
+    },
     globals: true,
     setupFiles: ["./tests/setup.ts"],
   },

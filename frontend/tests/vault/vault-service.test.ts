@@ -49,9 +49,8 @@ describe("vault service", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { archiveVault, createVault, getVault, listVaults, updateVault } = await import(
-      "@/features/vault/api/vault-service"
-    );
+    const { archiveVault, createVault, getVault, listVaults, updateVault } =
+      await import("@/features/vault/api/vault-service");
 
     await expect(listVaults({ page: 1, page_size: 20, search: "prod" })).resolves.toMatchObject({
       data: [{ id: "vault_1", name: "Production" }],
