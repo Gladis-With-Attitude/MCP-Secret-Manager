@@ -72,6 +72,7 @@ function SecretDetailsPage({ projectId, secretId, vaultId }: SecretDetailsPagePr
             mapSecretValueResponseToResult(await readSecretValue(secret.id))
           }
           secret={secret}
+          versionsHref={`/vaults/${vaultId}/projects/${projectId}/secrets/${secret.id}/versions`}
         />
       </Stack>
       <DeleteSecretDialog

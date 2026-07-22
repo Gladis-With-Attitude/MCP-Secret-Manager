@@ -1,3 +1,6 @@
+import Link from "next/link";
+
+import { Button } from "@/components/buttons/button";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Grid } from "@/components/layout/grid";
 import { Section } from "@/components/layout/section";
@@ -11,9 +14,10 @@ import { SecretValuePreview } from "./secret-value-preview";
 type SecretDetailsProps = {
   onRevealValue: () => Promise<SecretValueResult>;
   secret: Secret;
+  versionsHref?: string;
 };
 
-function SecretDetails({ onRevealValue, secret }: SecretDetailsProps) {
+function SecretDetails({ onRevealValue, secret, versionsHref }: SecretDetailsProps) {
   return (
     <Stack>
       <SecretValuePreview
@@ -24,7 +28,14 @@ function SecretDetails({ onRevealValue, secret }: SecretDetailsProps) {
       <Grid columns={3}>
         <Section title="Versions">
           <EmptyState
-            description="Secret Version workflows are intentionally not implemented in this feature."
+            action={
+              versionsHref ? (
+                <Button asChild variant="outline">
+                  <Link href={versionsHref}>Open version history</Link>
+                </Button>
+              ) : undefined
+            }
+            description="Consult immutable metadata-only versions. Secret values are never displayed in history."
             title={
               secret.currentVersion
                 ? `Current version ${secret.currentVersion}`
