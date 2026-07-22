@@ -47,7 +47,6 @@ type CreateSecretRequestDto = {
   metadata?: SecretMetadata;
   tags?: string[];
   type?: SecretType;
-  value: string;
 };
 
 type UpdateSecretRequestDto = {

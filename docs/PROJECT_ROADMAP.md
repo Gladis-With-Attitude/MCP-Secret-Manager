@@ -25,8 +25,8 @@ Objective: make every core feature usable end to end.
 | --- | --- | --- |
 | B1 | ✅ | Vault End-to-End Integration |
 | B2 | ✅ | Project End-to-End Integration |
-| B3 | 🔄 | Secret End-to-End Integration |
-| B4 | ⏳ | Secret Version End-to-End Integration |
+| B3 | ✅ | Secret End-to-End Integration |
+| B4 | 🔄 | Secret Version End-to-End Integration |
 | B5 | ⏳ | Authentication & Session End-to-End Integration |
 | B6 | ⏳ | API Keys End-to-End Integration |
 | B7 | ⏳ | RBAC End-to-End Integration |

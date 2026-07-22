@@ -117,6 +117,34 @@ async def get_create_secret_use_case() -> NoReturn:
     )
 
 
+async def get_list_secrets_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Secret persistence is not configured.",
+    )
+
+
+async def get_secret_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Secret persistence is not configured.",
+    )
+
+
+async def get_update_secret_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Secret persistence is not configured.",
+    )
+
+
+async def get_archive_secret_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Secret persistence is not configured.",
+    )
+
+
 async def get_create_secret_version_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

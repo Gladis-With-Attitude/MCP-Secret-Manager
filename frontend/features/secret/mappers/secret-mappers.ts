@@ -141,7 +141,6 @@ function mapSecretFormToCreateDto(values: SecretFormValues): CreateSecretRequest
     metadata: values.metadata,
     tags: values.tags,
     type: values.type,
-    value: values.value ?? "",
   };
 }
 

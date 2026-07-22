@@ -8,7 +8,13 @@ import anyio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
-from application.secret.use_cases import CreateSecretUseCase
+from application.secret.use_cases import (
+    ArchiveSecretUseCase,
+    CreateSecretUseCase,
+    GetSecretUseCase,
+    ListSecretsUseCase,
+    UpdateSecretUseCase,
+)
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectId, ProjectName
@@ -25,7 +31,13 @@ from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
 from presentation.rest.app import create_app
-from presentation.rest.dependencies import get_create_secret_use_case
+from presentation.rest.dependencies import (
+    get_archive_secret_use_case,
+    get_create_secret_use_case,
+    get_list_secrets_use_case,
+    get_secret_use_case,
+    get_update_secret_use_case,
+)
 
 
 class InMemoryVaultRepository:
@@ -154,12 +166,79 @@ class InMemorySecretRepository:
     async def get(self, secret_id: SecretId) -> Secret | None:
         return self._secrets.get(secret_id)
 
-    async def list_by_project(self, project_id: ProjectId) -> Sequence[Secret]:
-        return tuple(secret for secret in self._secrets.values() if secret.project_id == project_id)
+    async def update(self, secret: Secret) -> Secret:
+        if await self.exists_in_project(
+            secret.project_id,
+            secret.key,
+            exclude_secret_id=secret.id,
+        ):
+            raise SecretRepositoryConflictError("Secret key already exists.")
+        self._secrets[secret.id] = secret
+        return secret
 
-    async def exists_in_project(self, project_id: ProjectId, key: SecretKey) -> bool:
+    async def list_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> Sequence[Secret]:
+        secrets = tuple(
+            secret for secret in self._secrets.values() if secret.project_id == project_id
+        )
+        if status == "archived":
+            secrets = tuple(secret for secret in secrets if secret.archived)
+        elif status == "active" or not include_archived:
+            secrets = tuple(secret for secret in secrets if not secret.archived)
+        if secret_type is not None:
+            secrets = tuple(secret for secret in secrets if secret.type.value == secret_type)
+        if search is not None:
+            normalized_search = search.strip().upper()
+            secrets = tuple(
+                secret
+                for secret in secrets
+                if normalized_search in secret.key.value
+                or (
+                    secret.description.value is not None
+                    and normalized_search in secret.description.value.upper()
+                )
+            )
+        return secrets[offset : offset + limit]
+
+    async def count_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> int:
+        return len(
+            await self.list_by_project(
+                project_id,
+                include_archived=include_archived,
+                limit=1000,
+                offset=0,
+                search=search,
+                status=status,
+                secret_type=secret_type,
+            )
+        )
+
+    async def exists_in_project(
+        self,
+        project_id: ProjectId,
+        key: SecretKey,
+        *,
+        exclude_secret_id: SecretId | None = None,
+    ) -> bool:
         return any(
-            secret.project_id == project_id and secret.key == key
+            secret.project_id == project_id and secret.key == key and secret.id != exclude_secret_id
             for secret in self._secrets.values()
         )
 
@@ -234,7 +313,23 @@ async def build_app_with_project() -> tuple[FastAPI, Project]:
     async def dependency() -> AsyncIterator[CreateSecretUseCase]:
         yield CreateSecretUseCase(unit_of_work)
 
+    async def list_dependency() -> AsyncIterator[ListSecretsUseCase]:
+        yield ListSecretsUseCase(unit_of_work)
+
+    async def get_dependency() -> AsyncIterator[GetSecretUseCase]:
+        yield GetSecretUseCase(unit_of_work)
+
+    async def update_dependency() -> AsyncIterator[UpdateSecretUseCase]:
+        yield UpdateSecretUseCase(unit_of_work)
+
+    async def archive_dependency() -> AsyncIterator[ArchiveSecretUseCase]:
+        yield ArchiveSecretUseCase(unit_of_work)
+
     app.dependency_overrides[get_create_secret_use_case] = dependency
+    app.dependency_overrides[get_list_secrets_use_case] = list_dependency
+    app.dependency_overrides[get_secret_use_case] = get_dependency
+    app.dependency_overrides[get_update_secret_use_case] = update_dependency
+    app.dependency_overrides[get_archive_secret_use_case] = archive_dependency
     return app, project
 
 
@@ -242,6 +337,30 @@ async def post_secret(app: FastAPI, project_id: str, payload: dict[str, str | No
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         return await client.post(f"/v1/projects/{project_id}/secrets", json=payload)
+
+
+async def get_project_secrets(app: FastAPI, project_id: str, query: str = "") -> Response:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.get(f"/v1/projects/{project_id}/secrets{query}")
+
+
+async def get_secret(app: FastAPI, secret_id: str) -> Response:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.get(f"/v1/secrets/{secret_id}")
+
+
+async def patch_secret(app: FastAPI, secret_id: str, payload: dict[str, object]) -> Response:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.patch(f"/v1/secrets/{secret_id}", json=payload)
+
+
+async def archive_secret(app: FastAPI, secret_id: str) -> Response:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.post(f"/v1/secrets/{secret_id}/archive")
 
 
 def test_create_secret_endpoint_returns_created_secret_metadata() -> None:
@@ -313,5 +432,79 @@ def test_create_secret_endpoint_returns_conflict_for_duplicate_key_in_project() 
         assert second_response.json() == {
             "detail": "A secret with this key already exists in this project."
         }
+
+    anyio.run(run)
+
+
+def test_list_secret_endpoint_returns_project_secret_metadata() -> None:
+    async def run() -> None:
+        app, project = await build_app_with_project()
+        await post_secret(
+            app,
+            str(project.id),
+            {
+                "key": "OPENAI_API_KEY",
+                "description": "OpenAI API key metadata.",
+                "type": "api_key",
+            },
+        )
+
+        response = await get_project_secrets(app, str(project.id), "?q=openai&type=api_key")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["data"][0]["key"] == "OPENAI_API_KEY"
+        assert body["data"][0]["type"] == "api_key"
+        assert body["data"][0]["permissions"]["read_value"] is False
+        assert body["pagination"]["total"] == 1
+        assert body["permissions"]["create"] is True
+
+    anyio.run(run)
+
+
+def test_get_update_and_archive_secret_metadata_end_to_end() -> None:
+    async def run() -> None:
+        app, project = await build_app_with_project()
+        created_response = await post_secret(
+            app,
+            str(project.id),
+            {
+                "key": "OPENAI_API_KEY",
+                "description": "OpenAI API key metadata.",
+                "type": "api_key",
+            },
+        )
+        secret_id = created_response.json()["id"]
+
+        get_response = await get_secret(app, secret_id)
+        assert get_response.status_code == 200
+        assert get_response.json()["key"] == "OPENAI_API_KEY"
+
+        update_response = await patch_secret(
+            app,
+            secret_id,
+            {
+                "key": "OPENAI_TOKEN",
+                "description": "Rotated OpenAI token metadata.",
+                "metadata": {"owner": "platform"},
+                "tags": ["production", "openai"],
+                "type": "token",
+            },
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["key"] == "OPENAI_TOKEN"
+        assert update_response.json()["metadata"] == {"owner": "platform"}
+        assert update_response.json()["tags"] == ["production", "openai"]
+        assert update_response.json()["type"] == "token"
+
+        archive_response = await archive_secret(app, secret_id)
+        assert archive_response.status_code == 200
+        assert archive_response.json()["archived"] is True
+        assert archive_response.json()["status"] == "archived"
+
+        active_list_response = await get_project_secrets(app, str(project.id))
+        archived_list_response = await get_project_secrets(app, str(project.id), "?status=archived")
+        assert active_list_response.json()["data"] == []
+        assert archived_list_response.json()["data"][0]["id"] == secret_id
 
     anyio.run(run)

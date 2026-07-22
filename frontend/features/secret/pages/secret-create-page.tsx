@@ -60,7 +60,7 @@ function SecretCreatePage({ projectId, vaultId }: SecretCreatePageProps) {
     <Container size="lg">
       <Stack gap="lg">
         <SecretHeader
-          description="Create a secret inside this project. The backend owns encryption and versioning."
+          description="Create reusable secret metadata inside this project."
           projectId={projectId}
           projectName={projectName}
           title="Create Secret"
@@ -70,7 +70,6 @@ function SecretCreatePage({ projectId, vaultId }: SecretCreatePageProps) {
         <Section>
           <SecretForm
             error={error}
-            includeValue
             isSubmitting={createMutation.isPending}
             onSubmit={handleSubmit}
             projectName={projectName}

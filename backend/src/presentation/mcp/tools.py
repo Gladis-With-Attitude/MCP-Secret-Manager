@@ -239,7 +239,7 @@ class SecretManagerMcpTools:
                 ListSecretsRequest(project_id=project_id, audit_context=audit_context)
             )
         )
-        return McpToolResult([self._secret(item) for item in response])
+        return McpToolResult([self._secret(item) for item in response.data])
 
     async def create_secret(
         self,
@@ -468,6 +468,11 @@ class SecretManagerMcpTools:
             "project_id": response.project_id,
             "key": response.key,
             "description": response.description,
+            "type": response.type,
+            "metadata": response.metadata or {},
+            "tags": list(response.tags),
+            "archived": response.archived,
+            "status": response.status,
         }
 
     @staticmethod

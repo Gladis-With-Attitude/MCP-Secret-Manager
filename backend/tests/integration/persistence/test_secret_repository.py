@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
@@ -186,16 +187,24 @@ async def test_secret_table_enforces_key_format_check(
 ) -> None:
     async with session_factory() as session:
         project = await create_project(session, "API")
+        secret = Secret.create(
+            project_id=project.id,
+            key=SecretKey("OPENAI_API_KEY"),
+            description=SecretDescription(None),
+        )
         session.add(
             SecretModel(
-                id=Secret.create(
-                    project_id=project.id,
-                    key=SecretKey("OPENAI_API_KEY"),
-                    description=SecretDescription(None),
-                ).id.value,
+                id=secret.id.value,
                 project_id=project.id.value,
                 key="openai-api-key",
                 description=None,
+                type="generic",
+                metadata_json={},
+                tags=[],
+                archived=False,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+                archived_at=None,
             )
         )
 

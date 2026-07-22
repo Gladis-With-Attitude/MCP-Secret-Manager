@@ -82,7 +82,6 @@ describe("secret mappers", () => {
       metadata: { owner: "platform" },
       tags: ["production"],
       type: "token",
-      value: "sensitive-value",
     });
   });
 

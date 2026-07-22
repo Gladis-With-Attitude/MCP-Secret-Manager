@@ -9,10 +9,11 @@ from application.identity.dto import (
     UserResponse,
 )
 from application.project.dto import ProjectListResponse, ProjectResponse
-from application.secret.dto import SecretResponse
+from application.secret.dto import SecretListResponse, SecretResponse
 from application.secret_version.dto import SecretVersionResponse
 from application.vault.dto import VaultListResponse, VaultResponse
 from domain.audit.entities import AuditMetadata
+from domain.secret.value_objects import SecretMetadata, SecretMetadataValue
 
 
 class CreateVaultHttpRequest(BaseModel):
@@ -200,21 +201,103 @@ class CreateSecretHttpRequest(BaseModel):
 
     key: str
     description: str | None = None
+    type: str = "generic"
+    metadata: SecretMetadata = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+
+
+class UpdateSecretHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    description: str | None = None
+    type: str = "generic"
+    metadata: SecretMetadata = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+
+
+class SecretPermissionHttpResponse(BaseModel):
+    archive: bool
+    create: bool
+    delete: bool
+    read: bool
+    read_value: bool
+    update: bool
 
 
 class SecretHttpResponse(BaseModel):
-    id: str
-    project_id: str
-    key: str
+    archived: bool
+    archived_at: str | None
+    created_at: str
+    current_version: int | None = None
     description: str | None
+    id: str
+    key: str
+    last_version_at: str | None = None
+    metadata: dict[str, SecretMetadataValue]
+    name: str
+    permissions: SecretPermissionHttpResponse | None = None
+    project_id: str
+    provider: str = "local"
+    status: str
+    tags: list[str]
+    type: str
+    updated_at: str
+    version_count: int | None = None
 
     @classmethod
-    def from_application(cls, response: SecretResponse) -> SecretHttpResponse:
+    def from_application(
+        cls,
+        response: SecretResponse,
+        permissions: SecretPermissionHttpResponse | None = None,
+    ) -> SecretHttpResponse:
         return cls(
-            id=response.id,
-            project_id=response.project_id,
-            key=response.key,
+            archived=response.archived,
+            archived_at=response.archived_at,
+            created_at=response.created_at,
             description=response.description,
+            id=response.id,
+            key=response.key,
+            metadata=response.metadata or {},
+            name=response.key,
+            permissions=permissions,
+            project_id=response.project_id,
+            status=response.status,
+            tags=list(response.tags),
+            type=response.type,
+            updated_at=response.updated_at,
+        )
+
+
+class SecretListHttpResponse(BaseModel):
+    data: list[SecretHttpResponse]
+    pagination: PaginationHttpResponse
+    permissions: SecretPermissionHttpResponse
+    success: bool = True
+
+    @classmethod
+    def from_application(cls, response: SecretListResponse) -> SecretListHttpResponse:
+        permissions = SecretPermissionHttpResponse(
+            archive=response.permissions.archive,
+            create=response.permissions.create,
+            delete=response.permissions.delete,
+            read=response.permissions.read,
+            read_value=response.permissions.read_value,
+            update=response.permissions.update,
+        )
+        return cls(
+            data=[
+                SecretHttpResponse.from_application(item, permissions=permissions)
+                for item in response.data
+            ],
+            pagination=PaginationHttpResponse(
+                hasNextPage=response.pagination.has_next_page,
+                hasPreviousPage=response.pagination.has_previous_page,
+                page=response.pagination.page,
+                pageSize=response.pagination.page_size,
+                total=response.pagination.total,
+            ),
+            permissions=permissions,
         )
 
 

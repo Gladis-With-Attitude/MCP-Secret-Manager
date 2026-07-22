@@ -57,7 +57,6 @@ describe("secret mutations", () => {
       metadata: { owner: "platform" },
       tags: ["production"],
       type: "token",
-      value: "sensitive-value",
     });
   });
 
