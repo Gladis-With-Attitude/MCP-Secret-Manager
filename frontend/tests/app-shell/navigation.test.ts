@@ -15,6 +15,12 @@ describe("app shell navigation helpers", () => {
     expect(
       isActiveRoute("/vaults/vault_1/projects/project_1", "/projects", ["/vaults/*/projects"]),
     ).toBe(true);
+    expect(
+      matchPathPattern(
+        "/vaults/vault_1/projects/project_1/secrets/secret_1",
+        "/vaults/*/projects/*/secrets",
+      ),
+    ).toBe(true);
   });
 
   it("creates breadcrumbs from static routes", () => {

@@ -24,6 +24,13 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("marks nested project secrets as active secret routes", () => {
+    render(<Sidebar pathname="/vaults/vault_1/projects/project_1/secrets/secret_1" />);
+
+    expect(screen.getByRole("link", { name: "Secrets" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Projects" })).not.toHaveAttribute("aria-current");
+  });
+
   it("keeps accessible labels when collapsed", () => {
     render(<Sidebar isCollapsed pathname="/settings" />);
 

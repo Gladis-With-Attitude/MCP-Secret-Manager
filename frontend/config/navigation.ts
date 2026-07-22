@@ -48,7 +48,8 @@ const navigationSections: NavigationSection[] = [
         label: "Projects",
       },
       {
-        description: "Secret metadata placeholder.",
+        activePathPatterns: ["/vaults/*/projects/*/secrets", "/vaults/*/projects/*/secrets/*"],
+        description: "Secret metadata and sensitive value access.",
         href: "/secrets",
         id: "secrets",
         label: "Secrets",

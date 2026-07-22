@@ -44,9 +44,14 @@ const navigationIcons = {
 function Sidebar({ className, isCollapsed = false, onNavigate, pathname }: SidebarProps) {
   const explicitActiveItemId = navigationSections
     .flatMap((section) => section.items)
-    .find((item) =>
-      item.activePathPatterns?.some((pattern) => matchPathPattern(pathname, pattern)),
-    )?.id;
+    .flatMap(
+      (item) =>
+        item.activePathPatterns
+          ?.filter((pattern) => matchPathPattern(pathname, pattern))
+          .map((pattern) => ({ item, specificity: pattern.split("/").filter(Boolean).length })) ??
+        [],
+    )
+    .sort((first, second) => second.specificity - first.specificity)[0]?.item.id;
 
   return (
     <aside

@@ -38,6 +38,7 @@ npm run format:check
 - `features/`: feature-first product domains.
 - `features/vault/`: Vault UI models, DTOs, services, queries, mutations, validation, mappers, components and pages.
 - `features/project/`: Project UI models, DTOs, services, vault-scoped queries, mutations, validation, mappers, components and pages.
+- `features/secret/`: Secret metadata UI models, DTOs, services, project-scoped queries, mutations, reveal-only value access, validation, mappers, components and pages.
 - `lib/`: frontend infrastructure and generic utilities.
 - `lib/api/`: HTTP client, runtime API configuration, response parsing, error normalization and generic HTTP helpers.
 - `lib/auth/`: authentication state contracts, session helpers, route protection helpers and extension points.

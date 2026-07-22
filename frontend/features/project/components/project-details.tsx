@@ -1,3 +1,6 @@
+import Link from "next/link";
+
+import { Button } from "@/components/buttons/button";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Grid } from "@/components/layout/grid";
 import { Section } from "@/components/layout/section";
@@ -17,8 +20,26 @@ function ProjectDetails({ project }: ProjectDetailsProps) {
       <Grid columns={3}>
         <Section title="Secrets">
           <EmptyState
-            description="Secret workflows belong to the Secret feature and are intentionally not implemented here."
-            title="No secret data loaded"
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button asChild variant="outline">
+                  <Link href={`/vaults/${project.vaultId}/projects/${project.id}/secrets`}>
+                    View secrets
+                  </Link>
+                </Button>
+                <Button asChild>
+                  <Link href={`/vaults/${project.vaultId}/projects/${project.id}/secrets/new`}>
+                    Create secret
+                  </Link>
+                </Button>
+              </div>
+            }
+            description="Secrets are managed from the Secret feature while preserving this vault and project context."
+            title={
+              project.secretCount
+                ? `${project.secretCount} secrets available`
+                : "No secret data loaded"
+            }
           />
         </Section>
         <Section title="Permissions">
