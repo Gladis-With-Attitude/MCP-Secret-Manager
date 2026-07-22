@@ -28,6 +28,12 @@ make up-db    # start postgres only
 make down     # stop the stack
 make logs     # follow all service logs
 make logs-db  # follow postgres logs only
+make db-current
+make db-history
+make db-upgrade
+make db-downgrade DB_DOWN_REVISION=-1
+make db-revision DB_REVISION_MESSAGE="describe change"
+make db-reset CONFIRM_RESET=dev
 ```
 
 Backend and frontend validation scripts remain available through their own
@@ -44,9 +50,12 @@ docker compose --env-file .env.example exec -T frontend npm run build
 
 The backend container starts the fully bootstrapped FastAPI application from
 `infrastructure.bootstrap:app`. Runtime dependencies are wired to PostgreSQL
-repositories through dependency overrides. Database migrations are intentionally
-not run automatically by `docker compose up`; run Alembic explicitly in the
-dedicated migration slice/workflow.
+repositories through dependency overrides.
+
+The Compose stack runs a one-shot `migrations` service before the backend. It
+waits for PostgreSQL, executes `alembic upgrade head` with a PostgreSQL advisory
+lock, and fails the stack startup if migrations fail. No manual migration step is
+needed for local development.
 
 ## Architecture
 

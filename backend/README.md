@@ -35,4 +35,5 @@ presentation-only application. The bootstrap validates configuration, connects t
 PostgreSQL, initializes repositories and use cases, injects the REST
 dependencies, and disposes the database engine during FastAPI shutdown.
 
-Migrations are not executed automatically during container startup.
+Database migrations are executed by the dedicated Compose `migrations` service
+before the backend starts. The backend process itself does not run migrations.

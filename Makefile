@@ -1,8 +1,11 @@
 PYTHON ?= python3
 COMPOSE ?= docker compose
 ENV_FILE ?= .env.example
+DB_DOWN_REVISION ?= -1
+DB_REVISION_MESSAGE ?= database change
+DB_AUTOGENERATE ?= false
 
-.PHONY: install-dev up up-db down logs logs-db format lint typecheck test verify
+.PHONY: install-dev up up-db down logs logs-db db-upgrade db-downgrade db-current db-history db-revision db-reset format lint typecheck test verify
 
 install-dev:
 	cd backend && $(PYTHON) -m pip install -e ".[dev]"
@@ -21,6 +24,25 @@ logs:
 
 logs-db:
 	$(COMPOSE) --env-file $(ENV_FILE) logs -f postgres
+
+db-upgrade:
+	$(COMPOSE) --env-file $(ENV_FILE) run --rm migrations sh /app/scripts/manage-db.sh upgrade
+
+db-downgrade:
+	$(COMPOSE) --env-file $(ENV_FILE) run --rm migrations sh /app/scripts/manage-db.sh downgrade $(DB_DOWN_REVISION)
+
+db-current:
+	$(COMPOSE) --env-file $(ENV_FILE) run --rm migrations sh /app/scripts/manage-db.sh current
+
+db-history:
+	$(COMPOSE) --env-file $(ENV_FILE) run --rm --no-deps migrations sh /app/scripts/manage-db.sh history
+
+db-revision:
+	$(COMPOSE) --env-file $(ENV_FILE) run --rm migrations sh /app/scripts/manage-db.sh revision --message "$(DB_REVISION_MESSAGE)" $(if $(filter true,$(DB_AUTOGENERATE)),--autogenerate,)
+
+db-reset:
+	@test "$(CONFIRM_RESET)" = "dev" || (echo "Refusing to reset database. Re-run with CONFIRM_RESET=dev."; exit 1)
+	$(COMPOSE) --env-file $(ENV_FILE) run --rm -e MCP_SECRET_MANAGER_ALLOW_DB_RESET=true migrations sh /app/scripts/manage-db.sh reset
 
 format:
 	cd backend && $(PYTHON) -m ruff format .

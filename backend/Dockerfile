@@ -10,6 +10,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY scripts ./scripts
 
 RUN python -m pip install --no-cache-dir -e ".[dev]"
 

@@ -163,6 +163,7 @@ make down
 Le stack local démarre :
 
 - `postgres` pour PostgreSQL ;
+- `migrations` pour appliquer automatiquement le schéma Alembic ;
 - `backend` pour l'API FastAPI ;
 - `frontend` pour l'application Next.js.
 
@@ -171,6 +172,24 @@ Le host ne doit pas avoir besoin d'installer les dépendances Python ou Node.js 
 Les commandes Python locales restent possibles depuis `backend/` lorsqu'un environnement Python est volontairement installé. Les commandes npm locales restent possibles depuis `frontend/` lorsqu'un environnement Node.js est volontairement installé. Elles ne remplacent pas le workflow Docker recommandé.
 
 Les migrations PostgreSQL vivent sous `db/migrations/` et leur configuration Alembic sous `db/alembic.ini`.
+
+En développement local, `docker compose up` exécute automatiquement
+`alembic upgrade head` via le service one-shot `migrations` avant de démarrer le
+backend. Les migrations sont sérialisées par un verrou advisory PostgreSQL.
+
+Commandes utiles :
+
+```bash
+make db-current
+make db-history
+make db-upgrade
+make db-downgrade DB_DOWN_REVISION=-1
+make db-revision DB_REVISION_MESSAGE="describe change"
+make db-reset CONFIRM_RESET=dev
+```
+
+`make db-reset CONFIRM_RESET=dev` est destructif et réservé au développement :
+il supprime le schéma `public`, le recrée, puis rejoue toutes les migrations.
 
 ### Issue
 
