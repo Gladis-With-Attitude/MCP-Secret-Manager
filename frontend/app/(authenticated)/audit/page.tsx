@@ -1,11 +1,12 @@
-import { AppPlaceholderPage } from "@/components/app-shell/app-placeholder-page";
+import { Suspense } from "react";
+
+import { LoadingState } from "@/components/feedback/loading-state";
+import { AuditListPage } from "@/features/audit";
 
 export default function AuditPage() {
   return (
-    <AppPlaceholderPage
-      description="Audit log area placeholder."
-      emptyDescription="Audit workflows are intentionally not implemented in the app shell."
-      title="Audit Logs"
-    />
+    <Suspense fallback={<LoadingState title="Loading audit logs" />}>
+      <AuditListPage />
+    </Suspense>
   );
 }

@@ -62,7 +62,8 @@ const navigationSections: NavigationSection[] = [
         label: "API Keys",
       },
       {
-        description: "Audit log placeholder.",
+        activePathPatterns: ["/audit", "/audit/*"],
+        description: "Backend-generated security events.",
         href: "/audit",
         id: "audit",
         label: "Audit Logs",
