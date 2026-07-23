@@ -37,7 +37,11 @@ from application.secret.use_cases import (
     ListSecretsUseCase,
     SearchSecretsUseCase,
 )
-from application.secret_version.dto import CreateSecretVersionRequest, SecretVersionResponse
+from application.secret_version.dto import (
+    CreateSecretVersionRequest,
+    SecretVersionMetadataResponse,
+    SecretVersionResponse,
+)
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
@@ -196,15 +200,14 @@ class FakeListSecretVersionsUseCase:
         secret_id: str,
         audit_context: AuditContext | None = None,
         project_id: str | None = None,
-    ) -> tuple[SecretVersionResponse, ...]:
+    ) -> tuple[SecretVersionMetadataResponse, ...]:
         assert audit_context is not None
         assert audit_context.protocol == "mcp"
         assert project_id == "project-1"
         return (
-            SecretVersionResponse(
+            SecretVersionMetadataResponse(
                 id="version-1",
                 secret_id=secret_id,
-                value="secret-value",
                 version=1,
                 active=True,
                 created_at="2026-07-21T12:00:00+00:00",
@@ -376,6 +379,34 @@ def test_mcp_rotate_secret_passes_project_scope_to_use_case() -> None:
         assert version_use_case.requests[0].project_id == "project-1"
         assert version_use_case.requests[0].audit_context is not None
         assert version_use_case.requests[0].audit_context.protocol == "mcp"
+
+    anyio.run(run)
+
+
+def test_mcp_list_secret_versions_returns_metadata_without_values() -> None:
+    async def run() -> None:
+        server, authorize_use_case, _create_vault_use_case, _version_use_case = build_server()
+
+        result = await server.call_tool(
+            "list_secret_versions",
+            {"project_id": "project-1", "secret_id": "secret-1"},
+            auth_context(),
+        )
+
+        assert result.content == [
+            {
+                "id": "version-1",
+                "secret_id": "secret-1",
+                "version": 1,
+                "active": True,
+                "created_at": "2026-07-21T12:00:00+00:00",
+            }
+        ]
+        assert isinstance(result.content, list)
+        first_version = result.content[0]
+        assert isinstance(first_version, Mapping)
+        assert "value" not in first_version
+        assert authorize_use_case.requests[0].permission == "secret.read"
 
     anyio.run(run)
 

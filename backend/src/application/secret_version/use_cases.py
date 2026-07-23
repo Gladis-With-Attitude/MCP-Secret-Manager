@@ -5,7 +5,11 @@ from collections.abc import Sequence
 from application.audit.dto import AuditContext
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
-from application.secret_version.dto import CreateSecretVersionRequest, SecretVersionResponse
+from application.secret_version.dto import (
+    CreateSecretVersionRequest,
+    SecretVersionMetadataResponse,
+    SecretVersionResponse,
+)
 from application.secret_version.exceptions import (
     SecretNotFoundError,
     SecretVersionConflictError,
@@ -144,11 +148,9 @@ class ListSecretVersionsUseCase:
     def __init__(
         self,
         unit_of_work: UnitOfWork,
-        decrypt_secret_value_use_case: DecryptSecretValueUseCase,
         audit_recorder: AuditRecorder | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
-        self._decrypt_secret_value_use_case = decrypt_secret_value_use_case
         self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
     async def execute(
@@ -156,7 +158,7 @@ class ListSecretVersionsUseCase:
         secret_id: str,
         audit_context: AuditContext | None = None,
         project_id: str | None = None,
-    ) -> tuple[SecretVersionResponse, ...]:
+    ) -> tuple[SecretVersionMetadataResponse, ...]:
         try:
             validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
 
@@ -168,12 +170,14 @@ class ListSecretVersionsUseCase:
 
                 versions = await unit_of_work.secret_versions.list_versions(validated_secret_id)
 
-            response = tuple(self._to_response(version) for version in versions)
+            response = tuple(
+                SecretVersionMetadataResponse.from_domain(version) for version in versions
+            )
         except Exception:
             await record_audit_event(
                 self._audit_recorder,
                 audit_context,
-                action="secret.decrypt",
+                action="secret.read",
                 resource_type="secret",
                 resource_id=secret_id,
                 result=AuditResult.FAILURE,
@@ -183,21 +187,13 @@ class ListSecretVersionsUseCase:
         await record_audit_event(
             self._audit_recorder,
             audit_context,
-            action="secret.decrypt",
+            action="secret.read",
             resource_type="secret",
             resource_id=str(validated_secret_id),
             result=AuditResult.SUCCESS,
             metadata={"versions_returned": len(response)},
         )
         return response
-
-    def _to_response(self, secret_version: SecretVersion) -> SecretVersionResponse:
-        try:
-            value = self._decrypt_secret_value_use_case.execute(secret_version)
-        except CryptoProviderError as exc:
-            raise SecretVersionCryptoError("Secret value decryption failed.") from exc
-
-        return SecretVersionResponse.from_domain(secret_version, value)
 
 
 class GetActiveSecretVersionUseCase:

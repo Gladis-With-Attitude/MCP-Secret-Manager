@@ -26,7 +26,11 @@ from application.secret.use_cases import (
     ListSecretsUseCase,
     SearchSecretsUseCase,
 )
-from application.secret_version.dto import CreateSecretVersionRequest, SecretVersionResponse
+from application.secret_version.dto import (
+    CreateSecretVersionRequest,
+    SecretVersionMetadataResponse,
+    SecretVersionResponse,
+)
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
@@ -135,7 +139,7 @@ class SecretManagerMcpTools:
             (
                 self._tool(
                     "list_secret_versions",
-                    "List decrypted secret versions.",
+                    "List secret version metadata.",
                     {"project_id": "string", "secret_id": "string"},
                 ),
                 self.list_secret_versions,
@@ -302,7 +306,7 @@ class SecretManagerMcpTools:
     ) -> McpToolResult:
         project_id = self._required_string(arguments, "project_id")
         identity, audit_context = await self._authenticate(auth_context)
-        await self._authorize(identity, "secret.decrypt", "project", project_id, auth_context)
+        await self._authorize(identity, "secret.read", "project", project_id, auth_context)
         response = await self._call_application(
             self._list_secret_versions_use_case.execute(
                 self._required_string(arguments, "secret_id"),
@@ -310,7 +314,7 @@ class SecretManagerMcpTools:
                 project_id=project_id,
             )
         )
-        return McpToolResult([self._secret_version(item) for item in response])
+        return McpToolResult([self._secret_version_metadata(item) for item in response])
 
     async def search_secrets(
         self,
@@ -482,6 +486,16 @@ class SecretManagerMcpTools:
             "id": response.id,
             "secret_id": response.secret_id,
             "value": response.value,
+            "version": response.version,
+            "active": response.active,
+            "created_at": response.created_at,
+        }
+
+    @staticmethod
+    def _secret_version_metadata(response: SecretVersionMetadataResponse) -> JsonObject:
+        return {
+            "id": response.id,
+            "secret_id": response.secret_id,
             "version": response.version,
             "active": response.active,
             "created_at": response.created_at,

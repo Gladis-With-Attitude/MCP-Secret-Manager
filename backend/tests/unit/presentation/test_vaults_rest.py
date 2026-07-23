@@ -378,3 +378,13 @@ def test_vault_endpoint_returns_forbidden_when_permission_is_denied() -> None:
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Forbidden."}
+
+
+def test_vault_endpoint_requires_identity() -> None:
+    app = build_app(InMemoryVaultRepository())
+    app.dependency_overrides.pop(get_authenticated_identity)
+
+    response = anyio.run(request, app, "GET", "/v1/vaults")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Authentication is required."}

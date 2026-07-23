@@ -434,3 +434,32 @@ def test_project_endpoint_returns_forbidden_when_permission_is_denied() -> None:
         assert response.json() == {"detail": "Permission denied."}
 
     anyio.run(run)
+
+
+def test_project_endpoint_requires_identity() -> None:
+    async def run() -> None:
+        app, vault = await build_app_with_vault()
+        app.dependency_overrides.pop(get_authenticated_identity)
+
+        response = await request(app, "GET", f"/v1/vaults/{vault.id}/projects")
+
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Authentication is required."}
+
+    anyio.run(run)
+
+
+def test_project_detail_rejects_cross_project_access() -> None:
+    async def run() -> None:
+        app, vault = await build_app_with_vault()
+        created = await post_project(app, str(vault.id), {"name": "API"})
+        denied_authorize_use_case = FakeAuthorizeUseCase(allowed=False)
+        app.dependency_overrides[get_authorize_use_case] = lambda: denied_authorize_use_case
+
+        response = await request(app, "GET", f"/v1/projects/{created.json()['id']}")
+
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Permission denied."}
+        assert denied_authorize_use_case.requests[-1].parent_vault_id == str(vault.id)
+
+    anyio.run(run)

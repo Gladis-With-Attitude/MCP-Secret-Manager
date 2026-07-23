@@ -9,6 +9,10 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
+from application.project.use_cases import GetProjectUseCase
+from application.rbac.dto import RequirePermission
+from application.rbac.exceptions import AuthorizationDeniedError
+from application.secret.use_cases import GetSecretUseCase
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
@@ -31,10 +35,14 @@ from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
 from presentation.rest.app import create_app
+from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
 from presentation.rest.dependencies import (
     get_active_secret_version_use_case,
+    get_authorize_use_case,
     get_create_secret_version_use_case,
     get_list_secret_versions_use_case,
+    get_project_use_case,
+    get_secret_use_case,
 )
 
 
@@ -85,13 +93,17 @@ class InMemoryVaultRepository:
 
 
 class InMemoryProjectRepository:
-    async def create(self, _project: Project) -> Project:
-        raise ProjectRepositoryConflictError(
-            "Project repository is not used in SecretVersion REST tests."
-        )
+    def __init__(self) -> None:
+        self._projects: dict[ProjectId, Project] = {}
 
-    async def get(self, _project_id: ProjectId) -> Project | None:
-        return None
+    async def create(self, project: Project) -> Project:
+        if await self.exists_in_vault(project.vault_id, project.name):
+            raise ProjectRepositoryConflictError("Project name already exists.")
+        self._projects[project.id] = project
+        return project
+
+    async def get(self, project_id: ProjectId) -> Project | None:
+        return self._projects.get(project_id)
 
     async def update(self, project: Project) -> Project:
         return project
@@ -107,7 +119,10 @@ class InMemoryProjectRepository:
         status: str | None = None,
     ) -> Sequence[Project]:
         _ = include_archived, limit, offset, search, status
-        return ()
+        projects = tuple(
+            project for project in self._projects.values() if project.vault_id == _vault_id
+        )
+        return projects[offset : offset + limit]
 
     async def count_by_vault(
         self,
@@ -118,7 +133,16 @@ class InMemoryProjectRepository:
         status: str | None = None,
     ) -> int:
         _ = include_archived, search, status
-        return 0
+        return len(
+            await self.list_by_vault(
+                _vault_id,
+                include_archived=include_archived,
+                limit=10_000,
+                offset=0,
+                search=search,
+                status=status,
+            )
+        )
 
     async def exists_in_vault(
         self,
@@ -127,8 +151,12 @@ class InMemoryProjectRepository:
         *,
         exclude_project_id: ProjectId | None = None,
     ) -> bool:
-        _ = exclude_project_id
-        return False
+        return any(
+            project.vault_id == _vault_id
+            and project.name == _name
+            and project.id != exclude_project_id
+            for project in self._projects.values()
+        )
 
 
 class InMemorySecretRepository:
@@ -224,11 +252,12 @@ class FakeCryptoProvider:
 class InMemoryUnitOfWork:
     def __init__(
         self,
+        projects: ProjectRepository,
         secrets: SecretRepository,
         secret_versions: SecretVersionRepository,
     ) -> None:
         self._vaults = InMemoryVaultRepository()
-        self._projects = InMemoryProjectRepository()
+        self._projects = projects
         self._secrets = secrets
         self._secret_versions = secret_versions
 
@@ -267,19 +296,39 @@ class InMemoryUnitOfWork:
         return None
 
 
-async def build_app_with_secret() -> tuple[FastAPI, Secret]:
+class FakeAuthorizeUseCase:
+    def __init__(self, *, allowed: bool = True) -> None:
+        self.allowed = allowed
+        self.requests: list[RequirePermission] = []
+
+    async def execute(self, request: RequirePermission) -> None:
+        self.requests.append(request)
+        if not self.allowed:
+            raise AuthorizationDeniedError("Permission denied.")
+
+
+async def build_app_with_secret(
+    *,
+    authorize_use_case: FakeAuthorizeUseCase | None = None,
+) -> tuple[FastAPI, Secret]:
     secrets = InMemorySecretRepository()
     secret_versions = InMemorySecretVersionRepository()
+    projects = InMemoryProjectRepository()
+    project = await projects.create(
+        Project.create(vault_id=VaultId.new(), name=ProjectName("API"))
+    )
     secret = await secrets.create(
         Secret.create(
-            project_id=ProjectId.new(),
+            project_id=project.id,
             key=SecretKey("OPENAI_API_KEY"),
             description=SecretDescription(None),
         )
     )
-    unit_of_work = InMemoryUnitOfWork(secrets, secret_versions)
+    unit_of_work = InMemoryUnitOfWork(projects, secrets, secret_versions)
     crypto_provider = FakeCryptoProvider()
     app = create_app(service_name="test-service")
+    resolved_authorize_use_case = authorize_use_case or FakeAuthorizeUseCase()
+    app.state.authorize_use_case = resolved_authorize_use_case
 
     async def create_dependency() -> AsyncIterator[CreateSecretVersionUseCase]:
         yield CreateSecretVersionUseCase(
@@ -290,7 +339,6 @@ async def build_app_with_secret() -> tuple[FastAPI, Secret]:
     async def list_dependency() -> AsyncIterator[ListSecretVersionsUseCase]:
         yield ListSecretVersionsUseCase(
             unit_of_work,
-            DecryptSecretValueUseCase(crypto_provider),
         )
 
     async def latest_dependency() -> AsyncIterator[GetActiveSecretVersionUseCase]:
@@ -299,9 +347,23 @@ async def build_app_with_secret() -> tuple[FastAPI, Secret]:
             DecryptSecretValueUseCase(crypto_provider),
         )
 
+    async def get_secret_dependency() -> AsyncIterator[GetSecretUseCase]:
+        yield GetSecretUseCase(unit_of_work)
+
+    async def get_project_dependency() -> AsyncIterator[GetProjectUseCase]:
+        yield GetProjectUseCase(unit_of_work)
+
     app.dependency_overrides[get_create_secret_version_use_case] = create_dependency
     app.dependency_overrides[get_list_secret_versions_use_case] = list_dependency
     app.dependency_overrides[get_active_secret_version_use_case] = latest_dependency
+    app.dependency_overrides[get_secret_use_case] = get_secret_dependency
+    app.dependency_overrides[get_project_use_case] = get_project_dependency
+    app.dependency_overrides[get_authenticated_identity] = lambda: AuthenticatedIdentity(
+        id=str(VaultId.new()),
+        type="user",
+        api_key_id=str(VaultId.new()),
+    )
+    app.dependency_overrides[get_authorize_use_case] = lambda: resolved_authorize_use_case
     return app, secret
 
 
@@ -337,6 +399,12 @@ def test_create_secret_version_endpoint_returns_created_v1() -> None:
         assert payload["active"] is True
         assert isinstance(payload["id"], str)
         assert isinstance(payload["created_at"], str)
+        assert app.state.authorize_use_case.requests[-1].permission == "secret.rotate"
+        assert app.state.authorize_use_case.requests[-1].scope_type == "secret"
+        assert app.state.authorize_use_case.requests[-1].scope_id == str(secret.id)
+        assert app.state.authorize_use_case.requests[-1].parent_project_id == str(
+            secret.project_id
+        )
 
     anyio.run(run)
 
@@ -358,13 +426,48 @@ def test_secret_version_endpoints_return_history_and_latest() -> None:
         latest = latest_response.json()
         assert [version["version"] for version in history] == [1, 2]
         assert [version["active"] for version in history] == [False, True]
-        assert [version["value"] for version in history] == [
-            "plain-value-v1",
-            "plain-value-v2",
-        ]
+        assert "value" not in history[0]
+        assert "value" not in history[1]
         assert latest["id"] == second_response.json()["id"]
         assert latest["version"] == 2
         assert latest["active"] is True
+        assert latest["value"] == "plain-value-v2"
+        assert [request.permission for request in app.state.authorize_use_case.requests] == [
+            "secret.rotate",
+            "secret.rotate",
+            "secret.read",
+            "secret.decrypt",
+        ]
+
+    anyio.run(run)
+
+
+def test_secret_version_endpoint_returns_forbidden_when_permission_is_denied() -> None:
+    async def run() -> None:
+        app, secret = await build_app_with_secret(
+            authorize_use_case=FakeAuthorizeUseCase(allowed=False)
+        )
+
+        response = await get_latest_secret_version(app, str(secret.id))
+
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Permission denied."}
+        assert app.state.authorize_use_case.requests[-1].parent_project_id == str(
+            secret.project_id
+        )
+
+    anyio.run(run)
+
+
+def test_secret_version_endpoint_requires_identity() -> None:
+    async def run() -> None:
+        app, secret = await build_app_with_secret()
+        app.dependency_overrides.pop(get_authenticated_identity)
+
+        response = await get_latest_secret_version(app, str(secret.id))
+
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Authentication is required."}
 
     anyio.run(run)
 

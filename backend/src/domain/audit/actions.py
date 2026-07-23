@@ -12,6 +12,7 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     "project.archive",
     "secret.create",
     "secret.read",
+    "secret.archive",
     "secret.decrypt",
     "secret.rotate",
     "secret.delete",

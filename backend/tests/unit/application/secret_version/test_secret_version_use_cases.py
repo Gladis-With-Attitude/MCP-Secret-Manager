@@ -292,7 +292,6 @@ def build_create_use_case(unit_of_work: InMemoryUnitOfWork) -> CreateSecretVersi
 def build_list_use_case(unit_of_work: InMemoryUnitOfWork) -> ListSecretVersionsUseCase:
     return ListSecretVersionsUseCase(
         unit_of_work,
-        DecryptSecretValueUseCase(FakeCryptoProvider()),
     )
 
 
@@ -352,7 +351,8 @@ def test_create_secret_version_use_case_creates_v2_and_deactivates_v1() -> None:
         assert latest.id == second_response.id
         assert [version.version for version in history] == [1, 2]
         assert [version.active for version in history] == [False, True]
-        assert [version.value for version in history] == ["plain-value-v1", "plain-value-v2"]
+        assert all(not hasattr(version, "value") for version in history)
+        assert latest.value == "plain-value-v2"
         assert unit_of_work.committed is True
 
     anyio.run(run)

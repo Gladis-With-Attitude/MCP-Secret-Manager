@@ -347,7 +347,6 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def list_secret_versions_use_case() -> ListSecretVersionsUseCase:
             return ListSecretVersionsUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                DecryptSecretValueUseCase(crypto_provider),
                 audit_recorder=audit_recorder,
             )
 
@@ -457,7 +456,6 @@ def create_mcp_server(settings: AppSettings | None = None) -> McpServer:
         ),
         list_secret_versions_use_case=ListSecretVersionsUseCase(
             unit_of_work(session_factory),
-            DecryptSecretValueUseCase(crypto_provider),
             audit_recorder=audit_recorder,
         ),
         get_active_secret_version_use_case=GetActiveSecretVersionUseCase(
