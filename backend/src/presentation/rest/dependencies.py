@@ -26,6 +26,34 @@ async def get_create_api_key_use_case() -> NoReturn:
     )
 
 
+async def get_list_api_keys_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="ApiKey persistence is not configured.",
+    )
+
+
+async def get_api_key_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="ApiKey persistence is not configured.",
+    )
+
+
+async def get_update_api_key_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="ApiKey persistence is not configured.",
+    )
+
+
+async def get_revoke_api_key_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="ApiKey persistence is not configured.",
+    )
+
+
 async def get_create_session_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

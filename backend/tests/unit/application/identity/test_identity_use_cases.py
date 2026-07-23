@@ -15,6 +15,10 @@ from application.identity.dto import (
     CreateServiceAccountRequest,
     CreateSessionRequest,
     CreateUserRequest,
+    GetApiKeyRequest,
+    ListApiKeysRequest,
+    RevokeApiKeyRequest,
+    UpdateApiKeyRequest,
 )
 from application.identity.exceptions import AuthenticationFailedError, IdentityNotFoundError
 from application.identity.use_cases import (
@@ -24,8 +28,12 @@ from application.identity.use_cases import (
     CreateServiceAccountUseCase,
     CreateSessionUseCase,
     CreateUserUseCase,
+    GetApiKeyUseCase,
     GetCurrentSessionUseCase,
+    ListApiKeysUseCase,
+    RevokeApiKeyUseCase,
     RevokeCurrentSessionUseCase,
+    UpdateApiKeyUseCase,
 )
 from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
 from domain.identity.repositories import (
@@ -118,8 +126,69 @@ class InMemoryApiKeyRepository:
             None,
         )
 
+    async def list(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        now: datetime | None = None,
+    ) -> tuple[ApiKey, ...]:
+        api_keys = self._filtered(search=search, status=status, now=now)
+        return api_keys[offset : offset + limit]
+
+    async def count(
+        self,
+        *,
+        search: str | None = None,
+        status: str | None = None,
+        now: datetime | None = None,
+    ) -> int:
+        return len(self._filtered(search=search, status=status, now=now))
+
+    async def update(self, api_key: ApiKey) -> ApiKey:
+        self._api_keys[api_key.id] = api_key
+        return api_key
+
     async def replace(self, api_key: ApiKey) -> None:
         self._api_keys[api_key.id] = api_key
+
+    def _filtered(
+        self,
+        *,
+        search: str | None,
+        status: str | None,
+        now: datetime | None,
+    ) -> tuple[ApiKey, ...]:
+        effective_now = now or datetime.now(UTC)
+        api_keys = tuple(sorted(self._api_keys.values(), key=lambda api_key: api_key.created_at))
+        if search:
+            needle = search.lower()
+            api_keys = tuple(
+                api_key
+                for api_key in api_keys
+                if needle in api_key.key_prefix.lower()
+                or (api_key.name is not None and needle in api_key.name.lower())
+                or needle in api_key.owner_type.value
+            )
+        if status == "active":
+            api_keys = tuple(
+                api_key
+                for api_key in api_keys
+                if not api_key.is_revoked() and not api_key.is_expired(effective_now)
+            )
+        elif status == "expired":
+            api_keys = tuple(
+                api_key
+                for api_key in api_keys
+                if not api_key.is_revoked() and api_key.is_expired(effective_now)
+            )
+        elif status == "revoked":
+            api_keys = tuple(api_key for api_key in api_keys if api_key.is_revoked())
+        elif status == "unknown":
+            api_keys = ()
+        return api_keys
 
 
 class InMemoryAuthSessionRepository:
@@ -534,15 +603,172 @@ def test_create_api_key_returns_full_key_once_and_stores_hash_only() -> None:
                 owner_id=str(user_id),
                 owner_type=ApiKeyOwnerType.USER.value,
                 expires_at=None,
+                name="agent",
+                description="Production agent",
+                granted_permissions=("secret.read",),
+                scopes=("global",),
             )
         )
         stored = await unit_of_work.api_keys.get_by_prefix(response.key_prefix)
 
         assert response.api_key == FixedApiKeyGenerator.raw_api_key
         assert response.key_prefix == FixedApiKeyGenerator.key_prefix
+        assert response.name == "agent"
+        assert response.granted_permissions == ("secret.read",)
+        assert response.scopes == ("global",)
         assert stored is not None
+        assert stored.name == "agent"
+        assert stored.description == "Production agent"
         assert stored.hashed_key == f"hash:{FixedApiKeyGenerator.raw_api_key}"
         assert stored.hashed_key != response.api_key
+
+    anyio.run(run)
+
+
+def test_list_get_and_revoke_api_keys_return_metadata_only() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        user_id = await create_user(unit_of_work)
+        created = await CreateApiKeyUseCase(
+            unit_of_work,
+            FixedApiKeyGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(
+            CreateApiKeyRequest(
+                owner_id=str(user_id),
+                owner_type=ApiKeyOwnerType.USER.value,
+                expires_at=None,
+                name="agent",
+                description="Production agent",
+                granted_permissions=("secret.read",),
+                scopes=("global",),
+            )
+        )
+
+        listed = await ListApiKeysUseCase(unit_of_work).execute(
+            ListApiKeysRequest(search="agent", status="active")
+        )
+        detail = await GetApiKeyUseCase(unit_of_work).execute(
+            GetApiKeyRequest(api_key_id=created.id)
+        )
+        revoked = await RevokeApiKeyUseCase(unit_of_work).execute(
+            RevokeApiKeyRequest(api_key_id=created.id)
+        )
+
+        assert listed.pagination.total == 1
+        assert listed.data[0].id == created.id
+        assert listed.data[0].name == "agent"
+        assert detail.key_prefix == FixedApiKeyGenerator.key_prefix
+        assert revoked.status == "revoked"
+        assert revoked.revoked_at is not None
+        assert not hasattr(revoked, "api_key")
+
+    anyio.run(run)
+
+
+def test_create_api_key_persists_metadata() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        user_id = await create_user(unit_of_work)
+
+        response = await CreateApiKeyUseCase(
+            unit_of_work,
+            FixedApiKeyGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(
+            CreateApiKeyRequest(
+                owner_id=str(user_id),
+                owner_type=ApiKeyOwnerType.USER.value,
+                expires_at=None,
+                name="Build agent",
+                description="CI access",
+                granted_permissions=("secret.read",),
+                scopes=("project:alpha",),
+            )
+        )
+        stored = await unit_of_work.api_keys.get_by_prefix(response.key_prefix)
+
+        assert response.name == "Build agent"
+        assert response.granted_permissions == ("secret.read",)
+        assert response.scopes == ("project:alpha",)
+        assert stored is not None
+        assert stored.description == "CI access"
+
+    anyio.run(run)
+
+
+def test_list_api_keys_filters_and_paginates_metadata() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        user_id = await create_user(unit_of_work)
+        await CreateApiKeyUseCase(
+            unit_of_work,
+            FixedApiKeyGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(
+            CreateApiKeyRequest(
+                owner_id=str(user_id),
+                owner_type=ApiKeyOwnerType.USER.value,
+                expires_at=None,
+                name="Build agent",
+                description=None,
+            )
+        )
+
+        response = await ListApiKeysUseCase(unit_of_work).execute(
+            ListApiKeysRequest(search="build", status="active")
+        )
+
+        assert response.pagination.total == 1
+        assert response.data[0].name == "Build agent"
+        assert response.permissions.read is True
+        assert response.permissions.update is True
+
+    anyio.run(run)
+
+
+def test_update_api_key_changes_metadata_without_exposing_secret() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        raw_api_key = await create_api_key_for_user(unit_of_work)
+        stored = await unit_of_work.api_keys.get_by_prefix(FixedApiKeyGenerator.key_prefix)
+        assert stored is not None
+
+        updated = await UpdateApiKeyUseCase(unit_of_work).execute(
+            UpdateApiKeyRequest(
+                api_key_id=str(stored.id),
+                name="Updated agent",
+                description="Updated metadata",
+                expires_at=None,
+                granted_permissions=("secret.read", "secret.rotate"),
+                scopes=("global",),
+            )
+        )
+
+        assert updated.name == "Updated agent"
+        assert updated.description == "Updated metadata"
+        assert updated.granted_permissions == ("secret.read", "secret.rotate")
+        assert updated.scopes == ("global",)
+        assert not hasattr(updated, "api_key")
+        assert raw_api_key not in repr(updated)
+
+    anyio.run(run)
+
+
+def test_get_and_revoke_api_key() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        raw_api_key = await create_api_key_for_user(unit_of_work)
+        stored = await unit_of_work.api_keys.get_by_prefix(FixedApiKeyGenerator.key_prefix)
+        assert stored is not None
+
+        fetched = await GetApiKeyUseCase(unit_of_work).execute(GetApiKeyRequest(str(stored.id)))
+        revoked = await RevokeApiKeyUseCase(unit_of_work).execute(RevokeApiKeyRequest(fetched.id))
+
+        assert raw_api_key == FixedApiKeyGenerator.raw_api_key
+        assert fetched.key_prefix == FixedApiKeyGenerator.key_prefix
+        assert revoked.status == "revoked"
+        assert unit_of_work.committed is True
 
     anyio.run(run)
 

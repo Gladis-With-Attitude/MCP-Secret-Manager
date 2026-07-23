@@ -17,6 +17,8 @@ DEFAULT_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("secret.decrypt", "Decrypt secret values."),
     ("secret.rotate", "Rotate secret values."),
     ("apikey.create", "Create API keys."),
+    ("apikey.read", "Read API key metadata."),
+    ("apikey.update", "Update API key metadata."),
     ("apikey.revoke", "Revoke API keys."),
     ("role.read", "Read roles and permissions."),
     ("role.create", "Create roles."),

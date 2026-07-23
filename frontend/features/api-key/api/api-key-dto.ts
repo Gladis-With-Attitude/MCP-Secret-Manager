@@ -6,6 +6,7 @@ type ApiKeyPermissionDto = {
   create?: boolean;
   read?: boolean;
   revoke?: boolean;
+  update?: boolean;
 };
 
 type ApiKeyDto = {

@@ -10,26 +10,40 @@ from httpx import ASGITransport, AsyncClient
 from application.audit.dto import AuditContext
 from application.identity.dto import (
     ApiKeyCreatedResponse,
+    ApiKeyListResponse,
+    ApiKeyPaginationResponse,
+    ApiKeyPermissionsResponse,
+    ApiKeyResponse,
     AuthenticatedIdentityResponse,
     CreateApiKeyRequest,
     CreateServiceAccountRequest,
     CreateSessionRequest,
     CreateUserRequest,
     CurrentSessionResponse,
+    GetApiKeyRequest,
+    ListApiKeysRequest,
+    RevokeApiKeyRequest,
     ServiceAccountResponse,
     SessionCreatedResponse,
+    UpdateApiKeyRequest,
     UserResponse,
 )
 from application.identity.exceptions import AuthenticationFailedError
 from application.identity.use_cases import AuthenticateApiKeyUseCase
+from application.rbac.dto import AuthorizationDecision, RequirePermission
 from presentation.rest.app import create_app
 from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
 from presentation.rest.dependencies import (
+    get_api_key_use_case,
+    get_authorize_use_case,
     get_create_api_key_use_case,
     get_create_service_account_use_case,
     get_create_session_use_case,
     get_create_user_use_case,
     get_current_session_use_case,
+    get_list_api_keys_use_case,
+    get_revoke_api_key_use_case,
+    get_update_api_key_use_case,
 )
 
 
@@ -61,12 +75,107 @@ class FakeCreateApiKeyUseCase:
         return ApiKeyCreatedResponse(
             id="71a35966-aa7e-48af-815a-77796de636af",
             api_key="mcp_sm_0123456789abcdef_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            name=request.name or "agent",
+            description=request.description,
             key_prefix="mcp_sm_0123456789abcdef",
             owner_id=request.owner_id,
             owner_type=request.owner_type,
+            granted_permissions=request.granted_permissions,
+            scopes=request.scopes,
+            status="active",
             expires_at=request.expires_at,
+            revoked_at=None,
             created_at="2026-07-21T12:00:00+00:00",
         )
+
+
+class FakeListApiKeysUseCase:
+    async def execute(self, request: ListApiKeysRequest) -> ApiKeyListResponse:
+        return ApiKeyListResponse(
+            data=(
+                ApiKeyResponse(
+                    id="71a35966-aa7e-48af-815a-77796de636af",
+                    name="agent",
+                    description="Production agent",
+                    key_prefix="mcp_sm_0123456789abcdef",
+                    owner_id="a6ef559c-b860-4028-a050-bb7bd2244916",
+                    owner_type="user",
+                    granted_permissions=("secret.read",),
+                    scopes=("global",),
+                    status=request.status or "active",
+                    expires_at=None,
+                    revoked_at=None,
+                    created_at="2026-07-21T12:00:00+00:00",
+                ),
+            ),
+            pagination=ApiKeyPaginationResponse(
+                page=request.page,
+                page_size=request.page_size,
+                total=1,
+                has_next_page=False,
+                has_previous_page=False,
+            ),
+            permissions=ApiKeyPermissionsResponse(create=True, read=True, revoke=True, update=True),
+        )
+
+
+class FakeGetApiKeyUseCase:
+    async def execute(self, request: GetApiKeyRequest) -> ApiKeyResponse:
+        return ApiKeyResponse(
+            id=request.api_key_id,
+            name="agent",
+            description="Production agent",
+            key_prefix="mcp_sm_0123456789abcdef",
+            owner_id="a6ef559c-b860-4028-a050-bb7bd2244916",
+            owner_type="user",
+            granted_permissions=("secret.read",),
+            scopes=("global",),
+            status="active",
+            expires_at=None,
+            revoked_at=None,
+            created_at="2026-07-21T12:00:00+00:00",
+        )
+
+
+class FakeRevokeApiKeyUseCase:
+    async def execute(self, request: RevokeApiKeyRequest) -> ApiKeyResponse:
+        return ApiKeyResponse(
+            id=request.api_key_id,
+            name="agent",
+            description="Production agent",
+            key_prefix="mcp_sm_0123456789abcdef",
+            owner_id="a6ef559c-b860-4028-a050-bb7bd2244916",
+            owner_type="user",
+            granted_permissions=("secret.read",),
+            scopes=("global",),
+            status="revoked",
+            expires_at=None,
+            revoked_at="2026-07-21T12:30:00+00:00",
+            created_at="2026-07-21T12:00:00+00:00",
+        )
+
+
+class FakeUpdateApiKeyUseCase:
+    async def execute(self, request: UpdateApiKeyRequest) -> ApiKeyResponse:
+        return ApiKeyResponse(
+            id=request.api_key_id,
+            name=request.name or "agent",
+            description=request.description,
+            key_prefix="mcp_sm_0123456789abcdef",
+            owner_id="a6ef559c-b860-4028-a050-bb7bd2244916",
+            owner_type="user",
+            granted_permissions=request.granted_permissions,
+            scopes=request.scopes,
+            status="active",
+            expires_at=request.expires_at,
+            revoked_at=None,
+            created_at="2026-07-21T12:00:00+00:00",
+        )
+
+
+class FakeAuthorizeUseCase:
+    async def execute(self, _request: RequirePermission) -> AuthorizationDecision:
+        return AuthorizationDecision(allowed=True)
 
 
 class FakeAuthenticateApiKeyUseCase:
@@ -153,13 +262,33 @@ async def build_identity_app() -> FastAPI:
     async def current_session_dependency() -> AsyncIterator[FakeGetCurrentSessionUseCase]:
         yield FakeGetCurrentSessionUseCase()
 
+    async def list_api_keys_dependency() -> AsyncIterator[FakeListApiKeysUseCase]:
+        yield FakeListApiKeysUseCase()
+
+    async def get_api_key_dependency() -> AsyncIterator[FakeGetApiKeyUseCase]:
+        yield FakeGetApiKeyUseCase()
+
+    async def revoke_api_key_dependency() -> AsyncIterator[FakeRevokeApiKeyUseCase]:
+        yield FakeRevokeApiKeyUseCase()
+
+    async def update_api_key_dependency() -> AsyncIterator[FakeUpdateApiKeyUseCase]:
+        yield FakeUpdateApiKeyUseCase()
+
+    async def authorize_dependency() -> AsyncIterator[FakeAuthorizeUseCase]:
+        yield FakeAuthorizeUseCase()
+
     app.dependency_overrides[get_create_user_use_case] = create_user_dependency
     app.dependency_overrides[get_create_service_account_use_case] = (
         create_service_account_dependency
     )
     app.dependency_overrides[get_create_api_key_use_case] = create_api_key_dependency
+    app.dependency_overrides[get_list_api_keys_use_case] = list_api_keys_dependency
+    app.dependency_overrides[get_api_key_use_case] = get_api_key_dependency
+    app.dependency_overrides[get_update_api_key_use_case] = update_api_key_dependency
+    app.dependency_overrides[get_revoke_api_key_use_case] = revoke_api_key_dependency
     app.dependency_overrides[get_create_session_use_case] = create_session_dependency
     app.dependency_overrides[get_current_session_use_case] = current_session_dependency
+    app.dependency_overrides[get_authorize_use_case] = authorize_dependency
     return app
 
 
@@ -211,17 +340,124 @@ def test_create_api_key_endpoint_returns_full_key_once() -> None:
         async with AsyncClient(transport=transport, base_url="http://testserver") as client:
             response = await client.post(
                 "/v1/api-keys",
+                headers={"Authorization": "Bearer valid-api-key"},
                 json={
+                    "name": "agent",
+                    "description": "Production agent",
                     "owner_id": "a6ef559c-b860-4028-a050-bb7bd2244916",
                     "owner_type": "user",
+                    "permissions": ["secret.read"],
+                    "scopes": ["global"],
                 },
             )
 
         payload = response.json()
         assert response.status_code == 201
         assert payload["api_key"].startswith("mcp_sm_0123456789abcdef_")
+        assert payload["token"] == payload["api_key"]
+        assert payload["name"] == "agent"
         assert payload["key_prefix"] == "mcp_sm_0123456789abcdef"
+        assert payload["granted_permissions"] == ["secret.read"]
         assert "hashed_key" not in payload
+
+    anyio.run(run)
+
+
+def test_list_api_keys_endpoint_returns_metadata_only() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get(
+                "/v1/api-keys",
+                headers={"Authorization": "Bearer valid-api-key"},
+                params={"page": 1, "page_size": 20, "status": "active"},
+            )
+
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["data"][0]["name"] == "agent"
+        assert payload["data"][0]["key_prefix"] == "mcp_sm_0123456789abcdef"
+        assert payload["permissions"] == {
+            "create": True,
+            "read": True,
+            "revoke": True,
+            "update": True,
+        }
+        assert "api_key" not in payload["data"][0]
+        assert "hashed_key" not in payload["data"][0]
+
+    anyio.run(run)
+
+
+def test_get_api_key_endpoint_returns_metadata_only() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get(
+                "/v1/api-keys/71a35966-aa7e-48af-815a-77796de636af",
+                headers={"Authorization": "Bearer valid-api-key"},
+            )
+
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["id"] == "71a35966-aa7e-48af-815a-77796de636af"
+        assert payload["name"] == "agent"
+        assert "api_key" not in payload
+        assert "hashed_key" not in payload
+
+    anyio.run(run)
+
+
+def test_update_api_key_endpoint_returns_metadata_only() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.patch(
+                "/v1/api-keys/71a35966-aa7e-48af-815a-77796de636af",
+                headers={"Authorization": "Bearer valid-api-key"},
+                json={
+                    "name": "updated agent",
+                    "description": "Updated metadata",
+                    "permissions": ["secret.read", "secret.rotate"],
+                    "scopes": ["global"],
+                },
+            )
+
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["id"] == "71a35966-aa7e-48af-815a-77796de636af"
+        assert payload["name"] == "updated agent"
+        assert payload["granted_permissions"] == ["secret.read", "secret.rotate"]
+        assert payload["scopes"] == ["global"]
+        assert "api_key" not in payload
+        assert "token" not in payload
+        assert "hashed_key" not in payload
+
+    anyio.run(run)
+
+
+def test_revoke_api_key_endpoint_returns_revoked_metadata() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.post(
+                "/v1/api-keys/71a35966-aa7e-48af-815a-77796de636af/revoke",
+                headers={"Authorization": "Bearer valid-api-key"},
+            )
+
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["status"] == "revoked"
+        assert payload["revoked_at"] == "2026-07-21T12:30:00+00:00"
+        assert "api_key" not in payload
 
     anyio.run(run)
 

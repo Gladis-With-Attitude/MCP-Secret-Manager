@@ -2,7 +2,7 @@ type ApiKeyStatus = "active" | "expired" | "revoked" | "unknown";
 
 type ApiKeyOwnerType = "service_account" | "user";
 
-type ApiKeyPermission = "create" | "read" | "revoke";
+type ApiKeyPermission = "create" | "read" | "revoke" | "update";
 
 type ApiKeyPermissions = Partial<Record<ApiKeyPermission, boolean>>;
 

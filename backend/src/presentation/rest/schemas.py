@@ -5,6 +5,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from application.audit.dto import AuditEventResponse
 from application.identity.dto import (
     ApiKeyCreatedResponse,
+    ApiKeyListResponse,
+    ApiKeyPermissionsResponse,
+    ApiKeyResponse,
     CurrentSessionResponse,
     ServiceAccountResponse,
     UserResponse,
@@ -405,9 +408,23 @@ class ServiceAccountHttpResponse(BaseModel):
 class CreateApiKeyHttpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    description: str | None = None
     owner_id: str
     owner_type: str
+    name: str | None = None
+    permissions: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
     expires_at: str | None = None
+
+
+class UpdateApiKeyHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = None
+    expires_at: str | None = None
+    name: str | None = None
+    permissions: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
 
 
 class CreateSessionHttpRequest(BaseModel):
@@ -416,25 +433,139 @@ class CreateSessionHttpRequest(BaseModel):
     api_key: str
 
 
-class ApiKeyCreatedHttpResponse(BaseModel):
+class ApiKeyPermissionHttpResponse(BaseModel):
+    create: bool
+    read: bool
+    revoke: bool
+    update: bool
+
+    @classmethod
+    def from_application(
+        cls,
+        response: ApiKeyPermissionsResponse,
+    ) -> ApiKeyPermissionHttpResponse:
+        return cls(
+            create=response.create,
+            read=response.read,
+            revoke=response.revoke,
+            update=response.update,
+        )
+
+
+class ApiKeyHttpResponse(BaseModel):
     id: str
-    api_key: str
+    name: str
+    description: str | None
     key_prefix: str
     owner_id: str
+    owner_name: str | None = None
     owner_type: str
+    granted_permissions: list[str]
+    permission_names: list[str]
+    roles: list[str]
+    scopes: list[str]
+    status: str
+    permissions: ApiKeyPermissionHttpResponse | None = None
+    last_used_at: str | None
     expires_at: str | None
+    revoked_at: str | None
     created_at: str
+
+    @classmethod
+    def from_application(
+        cls,
+        response: ApiKeyCreatedResponse | ApiKeyResponse,
+        permissions: ApiKeyPermissionHttpResponse | None = None,
+    ) -> ApiKeyHttpResponse:
+        return cls(
+            id=response.id,
+            name=response.name,
+            description=response.description,
+            key_prefix=response.key_prefix,
+            owner_id=response.owner_id,
+            owner_name=response.owner_name,
+            owner_type=response.owner_type,
+            granted_permissions=list(response.granted_permissions),
+            permission_names=list(response.granted_permissions),
+            roles=[],
+            scopes=list(response.scopes),
+            status=response.status,
+            permissions=permissions,
+            last_used_at=response.last_used_at,
+            expires_at=response.expires_at,
+            revoked_at=response.revoked_at,
+            created_at=response.created_at,
+        )
+
+
+class ApiKeyCreatedHttpResponse(BaseModel):
+    id: str
+    name: str
+    description: str | None
+    key_prefix: str
+    owner_id: str
+    owner_name: str | None = None
+    owner_type: str
+    granted_permissions: list[str]
+    permission_names: list[str]
+    roles: list[str]
+    scopes: list[str]
+    status: str
+    permissions: ApiKeyPermissionHttpResponse | None = None
+    last_used_at: str | None
+    expires_at: str | None
+    revoked_at: str | None
+    created_at: str
+    api_key: str
+    token: str
 
     @classmethod
     def from_application(cls, response: ApiKeyCreatedResponse) -> ApiKeyCreatedHttpResponse:
         return cls(
             id=response.id,
-            api_key=response.api_key,
+            name=response.name,
+            description=response.description,
             key_prefix=response.key_prefix,
             owner_id=response.owner_id,
+            owner_name=response.owner_name,
             owner_type=response.owner_type,
+            granted_permissions=list(response.granted_permissions),
+            permission_names=list(response.granted_permissions),
+            roles=[],
+            scopes=list(response.scopes),
+            status=response.status,
+            permissions=None,
+            last_used_at=response.last_used_at,
             expires_at=response.expires_at,
+            revoked_at=response.revoked_at,
             created_at=response.created_at,
+            api_key=response.api_key,
+            token=response.api_key,
+        )
+
+
+class ApiKeyListHttpResponse(BaseModel):
+    data: list[ApiKeyHttpResponse]
+    pagination: PaginationHttpResponse
+    permissions: ApiKeyPermissionHttpResponse
+    success: bool = True
+
+    @classmethod
+    def from_application(cls, response: ApiKeyListResponse) -> ApiKeyListHttpResponse:
+        permissions = ApiKeyPermissionHttpResponse.from_application(response.permissions)
+        return cls(
+            data=[
+                ApiKeyHttpResponse.from_application(item, permissions=permissions)
+                for item in response.data
+            ],
+            pagination=PaginationHttpResponse(
+                hasNextPage=response.pagination.has_next_page,
+                hasPreviousPage=response.pagination.has_previous_page,
+                page=response.pagination.page,
+                pageSize=response.pagination.page_size,
+                total=response.pagination.total,
+            ),
+            permissions=permissions,
         )
 
 

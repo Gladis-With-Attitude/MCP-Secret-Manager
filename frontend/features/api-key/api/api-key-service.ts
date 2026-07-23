@@ -14,25 +14,29 @@ function unwrapApiKeyResponse(response: ApiKeyActionResponseDto): ApiKeyDto {
 }
 
 async function listApiKeys(params?: ApiKeyListParamsDto): Promise<ApiKeyListResponseDto> {
-  return get<ApiKeyListResponseDto>("/v1/tokens", { params });
+  return get<ApiKeyListResponseDto>("/v1/api-keys", { params });
 }
 
 async function getApiKey(apiKeyId: string): Promise<ApiKeyDto> {
-  const response = await get<ApiKeyActionResponseDto>(`/v1/tokens/${apiKeyId}`);
+  const response = await get<ApiKeyActionResponseDto>(`/v1/api-keys/${apiKeyId}`);
 
   return unwrapApiKeyResponse(response);
 }
 
 async function createApiKey(payload: CreateApiKeyRequestDto): Promise<ApiKeyCreatedResponseDto> {
-  return post<ApiKeyCreatedResponseDto, CreateApiKeyRequestDto>("/v1/tokens", payload, {
+  return post<ApiKeyCreatedResponseDto, CreateApiKeyRequestDto>("/v1/api-keys", payload, {
     retry: false,
   });
 }
 
 async function revokeApiKey(apiKeyId: string): Promise<ApiKeyDto> {
-  const response = await post<ApiKeyActionResponseDto>(`/v1/tokens/${apiKeyId}/revoke`, undefined, {
-    retry: false,
-  });
+  const response = await post<ApiKeyActionResponseDto>(
+    `/v1/api-keys/${apiKeyId}/revoke`,
+    undefined,
+    {
+      retry: false,
+    },
+  );
 
   return unwrapApiKeyResponse(response);
 }

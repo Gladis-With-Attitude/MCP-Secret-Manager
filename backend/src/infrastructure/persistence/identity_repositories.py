@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import UTC, datetime
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
 from domain.identity.repositories import (
@@ -113,6 +116,96 @@ class SqlAlchemyApiKeyRepository:
         if model is None:
             return None
         return model.to_domain()
+
+    async def list(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        now: datetime | None = None,
+    ) -> tuple[ApiKey, ...]:
+        statement = (
+            select(ApiKeyModel)
+            .where(*self._filters(search=search, status=status, now=now))
+            .order_by(ApiKeyModel.created_at.desc(), ApiKeyModel.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        models = await self._session.scalars(statement)
+        return tuple(model.to_domain() for model in models)
+
+    async def count(
+        self,
+        *,
+        search: str | None = None,
+        status: str | None = None,
+        now: datetime | None = None,
+    ) -> int:
+        statement = (
+            select(func.count())
+            .select_from(ApiKeyModel)
+            .where(*self._filters(search=search, status=status, now=now))
+        )
+        return int(await self._session.scalar(statement) or 0)
+
+    async def update(self, api_key: ApiKey) -> ApiKey:
+        model = await self._session.get(ApiKeyModel, api_key.id.value)
+        if model is None:
+            raise ApiKeyRepositoryConflictError("ApiKey was not found.")
+        model.hashed_key = api_key.hashed_key
+        model.key_prefix = api_key.key_prefix
+        model.owner_id = api_key.owner_id.value
+        model.owner_type = api_key.owner_type.value
+        model.name = api_key.name
+        model.description = api_key.description
+        model.granted_permissions = list(api_key.granted_permissions)
+        model.scopes = list(api_key.scopes)
+        model.expires_at = api_key.expires_at
+        model.revoked_at = api_key.revoked_at
+        model.created_at = api_key.created_at
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise ApiKeyRepositoryConflictError("ApiKey persistence conflict.") from exc
+        return model.to_domain()
+
+    @staticmethod
+    def _filters(
+        *,
+        search: str | None,
+        status: str | None,
+        now: datetime | None,
+    ) -> tuple[ColumnElement[bool], ...]:
+        filters: list[ColumnElement[bool]] = []
+        if search:
+            search_pattern = f"%{search.lower()}%"
+            filters.append(
+                or_(
+                    func.lower(ApiKeyModel.key_prefix).like(search_pattern),
+                    func.lower(ApiKeyModel.name).like(search_pattern),
+                    func.lower(ApiKeyModel.owner_type).like(search_pattern),
+                )
+            )
+
+        if status:
+            effective_now = now or datetime.now(UTC)
+            if status == "active":
+                filters.append(ApiKeyModel.revoked_at.is_(None))
+                filters.append(
+                    or_(ApiKeyModel.expires_at.is_(None), ApiKeyModel.expires_at > effective_now)
+                )
+            elif status == "expired":
+                filters.append(ApiKeyModel.revoked_at.is_(None))
+                filters.append(ApiKeyModel.expires_at.is_not(None))
+                filters.append(ApiKeyModel.expires_at <= effective_now)
+            elif status == "revoked":
+                filters.append(ApiKeyModel.revoked_at.is_not(None))
+            elif status == "unknown":
+                filters.append(ApiKeyModel.id.is_(None))
+
+        return tuple(filters)
 
 
 class SqlAlchemyAuthSessionRepository:

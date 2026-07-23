@@ -35,6 +35,8 @@ USER_PERMISSIONS = tuple(
         "secret.update",
         "secret.rotate",
         "apikey.create",
+        "apikey.read",
+        "apikey.update",
         "apikey.revoke",
         "role.read",
     }

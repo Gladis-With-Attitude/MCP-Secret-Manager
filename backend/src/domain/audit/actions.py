@@ -17,6 +17,8 @@ AUDIT_ACTIONS: tuple[str, ...] = (
     "secret.rotate",
     "secret.delete",
     "apikey.create",
+    "apikey.read",
+    "apikey.update",
     "apikey.revoke",
     "login.success",
     "login.failure",

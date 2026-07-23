@@ -41,6 +41,7 @@ function mapApiKeyPermissions(dto?: ApiKeyPermissionDto): ApiKeyPermissions {
     create: dto?.create,
     read: dto?.read,
     revoke: dto?.revoke,
+    update: dto?.update,
   };
 }
 

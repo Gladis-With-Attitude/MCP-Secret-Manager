@@ -88,6 +88,10 @@ class ApiKey:
     expires_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime
+    name: str | None = None
+    description: str | None = None
+    granted_permissions: tuple[str, ...] = ()
+    scopes: tuple[str, ...] = ()
 
     @classmethod
     def create(
@@ -97,6 +101,10 @@ class ApiKey:
         owner_id: UserId | ServiceAccountId,
         owner_type: ApiKeyOwnerType,
         expires_at: datetime | None,
+        name: str | None = None,
+        description: str | None = None,
+        granted_permissions: tuple[str, ...] = (),
+        scopes: tuple[str, ...] = (),
     ) -> ApiKey:
         return cls(
             id=ApiKeyId.new(),
@@ -107,6 +115,10 @@ class ApiKey:
             expires_at=expires_at,
             revoked_at=None,
             created_at=datetime.now(UTC),
+            name=name,
+            description=description,
+            granted_permissions=granted_permissions,
+            scopes=scopes,
         )
 
     def is_revoked(self) -> bool:
@@ -114,6 +126,48 @@ class ApiKey:
 
     def is_expired(self, now: datetime) -> bool:
         return self.expires_at is not None and self.expires_at <= now
+
+    def revoke(self, now: datetime | None = None) -> ApiKey:
+        if self.revoked_at is not None:
+            return self
+        return ApiKey(
+            id=self.id,
+            hashed_key=self.hashed_key,
+            key_prefix=self.key_prefix,
+            owner_id=self.owner_id,
+            owner_type=self.owner_type,
+            expires_at=self.expires_at,
+            revoked_at=now or datetime.now(UTC),
+            created_at=self.created_at,
+            name=self.name,
+            description=self.description,
+            granted_permissions=self.granted_permissions,
+            scopes=self.scopes,
+        )
+
+    def update_metadata(
+        self,
+        *,
+        name: str | None,
+        description: str | None,
+        granted_permissions: tuple[str, ...],
+        scopes: tuple[str, ...],
+        expires_at: datetime | None,
+    ) -> ApiKey:
+        return ApiKey(
+            id=self.id,
+            hashed_key=self.hashed_key,
+            key_prefix=self.key_prefix,
+            owner_id=self.owner_id,
+            owner_type=self.owner_type,
+            expires_at=expires_at,
+            revoked_at=self.revoked_at,
+            created_at=self.created_at,
+            name=name,
+            description=description,
+            granted_permissions=granted_permissions,
+            scopes=scopes,
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ApiKey):

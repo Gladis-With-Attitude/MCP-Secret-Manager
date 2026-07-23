@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -125,12 +125,14 @@ class ApiKeyModel(Base):
     __table_args__ = (
         CheckConstraint("char_length(hashed_key) >= 1", name="ck_api_keys_hashed_key_required"),
         CheckConstraint("char_length(key_prefix) >= 1", name="ck_api_keys_key_prefix_required"),
+        CheckConstraint("name IS NULL OR char_length(name) >= 1", name="ck_api_keys_name_valid"),
         CheckConstraint(
             "owner_type IN ('user', 'service_account')",
             name="ck_api_keys_owner_type_valid",
         ),
         Index("uq_api_keys_key_prefix", "key_prefix", unique=True),
         Index("ix_api_keys_owner", "owner_type", "owner_id"),
+        Index("ix_api_keys_status", "revoked_at", "expires_at"),
     )
 
     id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), primary_key=True)
@@ -138,6 +140,10 @@ class ApiKeyModel(Base):
     key_prefix: Mapped[str] = mapped_column(String(length=32), nullable=False)
     owner_id: Mapped[UUID] = mapped_column(postgresql.UUID(as_uuid=True), nullable=False)
     owner_type: Mapped[str] = mapped_column(String(length=32), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(length=120), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    granted_permissions: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -150,6 +156,10 @@ class ApiKeyModel(Base):
             key_prefix=api_key.key_prefix,
             owner_id=api_key.owner_id.value,
             owner_type=api_key.owner_type.value,
+            name=api_key.name,
+            description=api_key.description,
+            granted_permissions=list(api_key.granted_permissions),
+            scopes=list(api_key.scopes),
             expires_at=api_key.expires_at,
             revoked_at=api_key.revoked_at,
             created_at=api_key.created_at,
@@ -169,6 +179,10 @@ class ApiKeyModel(Base):
             key_prefix=self.key_prefix,
             owner_id=owner_id,
             owner_type=owner_type,
+            name=self.name,
+            description=self.description,
+            granted_permissions=tuple(self.granted_permissions or []),
+            scopes=tuple(self.scopes or []),
             expires_at=self.expires_at,
             revoked_at=self.revoked_at,
             created_at=self.created_at,

@@ -2,19 +2,28 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 
 from application.audit.dto import AuditContext
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.identity.dto import (
     ApiKeyCreatedResponse,
+    ApiKeyListResponse,
+    ApiKeyPaginationResponse,
+    ApiKeyPermissionsResponse,
+    ApiKeyResponse,
     AuthenticatedIdentityResponse,
     CreateApiKeyRequest,
     CreateServiceAccountRequest,
     CreateSessionRequest,
     CreateUserRequest,
     CurrentSessionResponse,
+    GetApiKeyRequest,
+    ListApiKeysRequest,
+    RevokeApiKeyRequest,
     ServiceAccountResponse,
     SessionCreatedResponse,
+    UpdateApiKeyRequest,
     UserResponse,
 )
 from application.identity.exceptions import (
@@ -148,6 +157,13 @@ class CreateApiKeyUseCase:
             owner_type = self._validate_owner_type(request.owner_type)
             owner_id = self._validate_owner_id(request.owner_id, owner_type)
             expires_at = self._validate_expires_at(request.expires_at)
+            name = self._validate_name(request.name)
+            description = self._validate_description(request.description)
+            granted_permissions = self._validate_string_tuple(
+                request.granted_permissions,
+                field_name="API key permissions",
+            )
+            scopes = self._validate_string_tuple(request.scopes, field_name="API key scopes")
             raw_api_key = self._api_key_generator.generate()
             key_prefix = self._api_key_generator.extract_prefix(raw_api_key)
             if key_prefix is None:
@@ -162,6 +178,10 @@ class CreateApiKeyUseCase:
                     owner_id=owner_id,
                     owner_type=owner_type,
                     expires_at=expires_at,
+                    name=name,
+                    description=description,
+                    granted_permissions=granted_permissions,
+                    scopes=scopes,
                 )
                 try:
                     created = await unit_of_work.api_keys.create(api_key)
@@ -244,6 +264,40 @@ class CreateApiKeyUseCase:
         return parsed
 
     @staticmethod
+    def _validate_name(raw_name: str | None) -> str | None:
+        if raw_name is None:
+            return None
+        name = raw_name.strip()
+        if not name:
+            raise IdentityValidationError("API key name is required.")
+        if len(name) > 120:
+            raise IdentityValidationError("API key name must be 120 characters or fewer.")
+        return name
+
+    @staticmethod
+    def _validate_description(raw_description: str | None) -> str | None:
+        if raw_description is None:
+            return None
+        description = raw_description.strip()
+        if not description:
+            return None
+        if len(description) > 1000:
+            raise IdentityValidationError("API key description must be 1000 characters or fewer.")
+        return description
+
+    @staticmethod
+    def _validate_string_tuple(raw_values: tuple[str, ...], *, field_name: str) -> tuple[str, ...]:
+        values = tuple(value.strip() for value in raw_values if value.strip())
+        if len(values) > 50:
+            raise IdentityValidationError(f"{field_name} must include 50 items or fewer.")
+        for value in values:
+            if len(value) > 120:
+                raise IdentityValidationError(
+                    f"{field_name} entries must be 120 characters or fewer."
+                )
+        return values
+
+    @staticmethod
     async def _ensure_active_owner(
         unit_of_work: IdentityUnitOfWork,
         owner_id: UserId | ServiceAccountId,
@@ -266,6 +320,170 @@ class CreateApiKeyUseCase:
             raise IdentityNotFoundError("API key owner not found.")
         if service_account.status is not IdentityStatus.ACTIVE:
             raise IdentityNotFoundError("API key owner is not active.")
+
+
+class ListApiKeysUseCase:
+    _SUPPORTED_STATUSES: ClassVar[set[str]] = {"active", "expired", "revoked", "unknown"}
+
+    def __init__(self, unit_of_work: IdentityUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(self, request: ListApiKeysRequest) -> ApiKeyListResponse:
+        page = self._validate_page(request.page)
+        page_size = self._validate_page_size(request.page_size)
+        status = self._validate_status(request.status)
+        search = request.search.strip() if request.search else None
+        offset = (page - 1) * page_size
+        now = datetime.now(UTC)
+
+        async with self._unit_of_work as unit_of_work:
+            total = await unit_of_work.api_keys.count(search=search, status=status, now=now)
+            api_keys = await unit_of_work.api_keys.list(
+                limit=page_size,
+                offset=offset,
+                search=search,
+                status=status,
+                now=now,
+            )
+
+        return ApiKeyListResponse(
+            data=tuple(ApiKeyResponse.from_domain(api_key) for api_key in api_keys),
+            pagination=ApiKeyPaginationResponse(
+                page=page,
+                page_size=page_size,
+                total=total,
+                has_next_page=offset + page_size < total,
+                has_previous_page=page > 1,
+            ),
+            permissions=ApiKeyPermissionsResponse(create=True, read=True, revoke=True, update=True),
+        )
+
+    @staticmethod
+    def _validate_page(page: int) -> int:
+        if page < 1:
+            raise IdentityValidationError("Page must be greater than or equal to 1.")
+        return page
+
+    @staticmethod
+    def _validate_page_size(page_size: int) -> int:
+        if page_size < 1 or page_size > 100:
+            raise IdentityValidationError("Page size must be between 1 and 100.")
+        return page_size
+
+    @classmethod
+    def _validate_status(cls, raw_status: str | None) -> str | None:
+        if raw_status is None or raw_status.strip() == "":
+            return None
+        status = raw_status.strip().lower()
+        if status not in cls._SUPPORTED_STATUSES:
+            raise IdentityValidationError("API key status filter is invalid.")
+        return status
+
+
+class GetApiKeyUseCase:
+    def __init__(self, unit_of_work: IdentityUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(self, request: GetApiKeyRequest) -> ApiKeyResponse:
+        try:
+            api_key_id = ApiKeyId.from_string(request.api_key_id)
+        except ValueError as exc:
+            raise IdentityValidationError("API key id must be a valid UUID.") from exc
+
+        async with self._unit_of_work as unit_of_work:
+            api_key = await unit_of_work.api_keys.get(api_key_id)
+            if api_key is None:
+                raise IdentityNotFoundError("API key not found.")
+
+        return ApiKeyResponse.from_domain(api_key)
+
+
+class RevokeApiKeyUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(self, request: RevokeApiKeyRequest) -> ApiKeyResponse:
+        try:
+            api_key_id = ApiKeyId.from_string(request.api_key_id)
+        except ValueError as exc:
+            raise IdentityValidationError("API key id must be a valid UUID.") from exc
+
+        async with self._unit_of_work as unit_of_work:
+            api_key = await unit_of_work.api_keys.get(api_key_id)
+            if api_key is None:
+                raise IdentityNotFoundError("API key not found.")
+            revoked = await unit_of_work.api_keys.update(api_key.revoke())
+            await unit_of_work.commit()
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="apikey.revoke",
+            resource_type="api_key",
+            resource_id=str(revoked.id),
+            result=AuditResult.SUCCESS,
+            metadata={"key_prefix": revoked.key_prefix},
+        )
+        return ApiKeyResponse.from_domain(revoked)
+
+
+class UpdateApiKeyUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(self, request: UpdateApiKeyRequest) -> ApiKeyResponse:
+        try:
+            api_key_id = ApiKeyId.from_string(request.api_key_id)
+        except ValueError as exc:
+            raise IdentityValidationError("API key id must be a valid UUID.") from exc
+
+        name = CreateApiKeyUseCase._validate_name(request.name)
+        description = CreateApiKeyUseCase._validate_description(request.description)
+        expires_at = CreateApiKeyUseCase._validate_expires_at(request.expires_at)
+        granted_permissions = CreateApiKeyUseCase._validate_string_tuple(
+            request.granted_permissions,
+            field_name="API key permissions",
+        )
+        scopes = CreateApiKeyUseCase._validate_string_tuple(
+            request.scopes,
+            field_name="API key scopes",
+        )
+
+        async with self._unit_of_work as unit_of_work:
+            api_key = await unit_of_work.api_keys.get(api_key_id)
+            if api_key is None:
+                raise IdentityNotFoundError("API key not found.")
+            updated = await unit_of_work.api_keys.update(
+                api_key.update_metadata(
+                    name=name,
+                    description=description,
+                    granted_permissions=granted_permissions,
+                    scopes=scopes,
+                    expires_at=expires_at,
+                )
+            )
+            await unit_of_work.commit()
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="apikey.update",
+            resource_type="api_key",
+            resource_id=str(updated.id),
+            result=AuditResult.SUCCESS,
+            metadata={"key_prefix": updated.key_prefix},
+        )
+        return ApiKeyResponse.from_domain(updated)
 
 
 class AuthenticateApiKeyUseCase:

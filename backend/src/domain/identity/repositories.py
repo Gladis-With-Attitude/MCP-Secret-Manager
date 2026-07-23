@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
@@ -60,6 +61,29 @@ class ApiKeyRepository(Protocol):
         raise NotImplementedError
 
     async def get_by_prefix(self, key_prefix: str) -> ApiKey | None:
+        raise NotImplementedError
+
+    async def list(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        now: datetime | None = None,
+    ) -> tuple[ApiKey, ...]:
+        raise NotImplementedError
+
+    async def count(
+        self,
+        *,
+        search: str | None = None,
+        status: str | None = None,
+        now: datetime | None = None,
+    ) -> int:
+        raise NotImplementedError
+
+    async def update(self, api_key: ApiKey) -> ApiKey:
         raise NotImplementedError
 
 
