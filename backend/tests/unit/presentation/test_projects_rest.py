@@ -176,10 +176,43 @@ class InMemorySecretRepository:
     async def get(self, _secret_id: SecretId) -> Secret | None:
         return None
 
-    async def list_by_project(self, _project_id: ProjectId) -> Sequence[Secret]:
+    async def update(self, _secret: Secret) -> Secret:
+        raise SecretRepositoryConflictError("Secret repository is not used in Project tests.")
+
+    async def list_by_project(
+        self,
+        _project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> Sequence[Secret]:
+        _ = include_archived, limit, offset, search, status, secret_type
         return ()
 
-    async def exists_in_project(self, _project_id: ProjectId, _key: SecretKey) -> bool:
+    async def count_by_project(
+        self,
+        _project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> int:
+        _ = include_archived, search, status, secret_type
+        return 0
+
+    async def exists_in_project(
+        self,
+        _project_id: ProjectId,
+        _key: SecretKey,
+        *,
+        exclude_secret_id: SecretId | None = None,
+    ) -> bool:
+        _ = exclude_secret_id
         return False
 
 
@@ -432,5 +465,34 @@ def test_project_endpoint_returns_forbidden_when_permission_is_denied() -> None:
 
         assert response.status_code == 403
         assert response.json() == {"detail": "Permission denied."}
+
+    anyio.run(run)
+
+
+def test_project_endpoint_requires_identity() -> None:
+    async def run() -> None:
+        app, vault = await build_app_with_vault()
+        app.dependency_overrides.pop(get_authenticated_identity)
+
+        response = await request(app, "GET", f"/v1/vaults/{vault.id}/projects")
+
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Authentication is required."}
+
+    anyio.run(run)
+
+
+def test_project_detail_rejects_cross_project_access() -> None:
+    async def run() -> None:
+        app, vault = await build_app_with_vault()
+        created = await post_project(app, str(vault.id), {"name": "API"})
+        denied_authorize_use_case = FakeAuthorizeUseCase(allowed=False)
+        app.dependency_overrides[get_authorize_use_case] = lambda: denied_authorize_use_case
+
+        response = await request(app, "GET", f"/v1/projects/{created.json()['id']}")
+
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Permission denied."}
+        assert denied_authorize_use_case.requests[-1].parent_vault_id == str(vault.id)
 
     anyio.run(run)

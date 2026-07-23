@@ -180,10 +180,43 @@ class InMemorySecretRepository:
     async def get(self, _secret_id: SecretId) -> Secret | None:
         return None
 
-    async def list_by_project(self, _project_id: ProjectId) -> Sequence[Secret]:
+    async def update(self, _secret: Secret) -> Secret:
+        raise SecretRepositoryConflictError("Secret repository is not used in Project tests.")
+
+    async def list_by_project(
+        self,
+        _project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> Sequence[Secret]:
+        _ = include_archived, limit, offset, search, status, secret_type
         return ()
 
-    async def exists_in_project(self, _project_id: ProjectId, _key: SecretKey) -> bool:
+    async def count_by_project(
+        self,
+        _project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> int:
+        _ = include_archived, search, status, secret_type
+        return 0
+
+    async def exists_in_project(
+        self,
+        _project_id: ProjectId,
+        _key: SecretKey,
+        *,
+        exclude_secret_id: SecretId | None = None,
+    ) -> bool:
+        _ = exclude_secret_id
         return False
 
 

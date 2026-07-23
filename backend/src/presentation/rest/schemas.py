@@ -10,7 +10,7 @@ from application.identity.dto import (
 )
 from application.project.dto import ProjectListResponse, ProjectResponse
 from application.secret.dto import SecretListResponse, SecretResponse
-from application.secret_version.dto import SecretVersionResponse
+from application.secret_version.dto import SecretVersionMetadataResponse, SecretVersionResponse
 from application.vault.dto import VaultListResponse, VaultResponse
 from domain.audit.entities import AuditMetadata
 from domain.secret.value_objects import SecretMetadata, SecretMetadataValue
@@ -321,6 +321,27 @@ class SecretVersionHttpResponse(BaseModel):
             id=response.id,
             secret_id=response.secret_id,
             value=response.value,
+            version=response.version,
+            active=response.active,
+            created_at=response.created_at,
+        )
+
+
+class SecretVersionMetadataHttpResponse(BaseModel):
+    id: str
+    secret_id: str
+    version: int
+    active: bool
+    created_at: str
+
+    @classmethod
+    def from_application(
+        cls,
+        response: SecretVersionMetadataResponse,
+    ) -> SecretVersionMetadataHttpResponse:
+        return cls(
+            id=response.id,
+            secret_id=response.secret_id,
             version=response.version,
             active=response.active,
             created_at=response.created_at,

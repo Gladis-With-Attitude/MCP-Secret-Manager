@@ -163,10 +163,43 @@ class InMemorySecretRepository:
     async def get(self, _secret_id: SecretId) -> Secret | None:
         return None
 
-    async def list_by_project(self, _project_id: ProjectId) -> Sequence[Secret]:
+    async def update(self, _secret: Secret) -> Secret:
+        raise SecretRepositoryConflictError("Secret repository is not used in Vault tests.")
+
+    async def list_by_project(
+        self,
+        _project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> Sequence[Secret]:
+        _ = include_archived, limit, offset, search, status, secret_type
         return ()
 
-    async def exists_in_project(self, _project_id: ProjectId, _key: SecretKey) -> bool:
+    async def count_by_project(
+        self,
+        _project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> int:
+        _ = include_archived, search, status, secret_type
+        return 0
+
+    async def exists_in_project(
+        self,
+        _project_id: ProjectId,
+        _key: SecretKey,
+        *,
+        exclude_secret_id: SecretId | None = None,
+    ) -> bool:
+        _ = exclude_secret_id
         return False
 
 
@@ -378,3 +411,13 @@ def test_vault_endpoint_returns_forbidden_when_permission_is_denied() -> None:
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Forbidden."}
+
+
+def test_vault_endpoint_requires_identity() -> None:
+    app = build_app(InMemoryVaultRepository())
+    app.dependency_overrides.pop(get_authenticated_identity)
+
+    response = anyio.run(request, app, "GET", "/v1/vaults")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Authentication is required."}

@@ -140,12 +140,63 @@ class InMemorySecretRepository:
     async def get(self, secret_id: SecretId) -> Secret | None:
         return self._secrets.get(secret_id)
 
-    async def list_by_project(self, project_id: ProjectId) -> Sequence[Secret]:
-        return tuple(secret for secret in self._secrets.values() if secret.project_id == project_id)
+    async def update(self, secret: Secret) -> Secret:
+        if await self.exists_in_project(
+            secret.project_id,
+            secret.key,
+            exclude_secret_id=secret.id,
+        ):
+            raise SecretRepositoryConflictError("Secret key already exists.")
+        self._secrets[secret.id] = secret
+        return secret
 
-    async def exists_in_project(self, project_id: ProjectId, key: SecretKey) -> bool:
+    async def list_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> Sequence[Secret]:
+        _ = include_archived, search, status, secret_type
+        secrets = tuple(
+            secret for secret in self._secrets.values() if secret.project_id == project_id
+        )
+        return secrets[offset : offset + limit]
+
+    async def count_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> int:
+        return len(
+            await self.list_by_project(
+                project_id,
+                include_archived=include_archived,
+                limit=10_000,
+                offset=0,
+                search=search,
+                status=status,
+                secret_type=secret_type,
+            )
+        )
+
+    async def exists_in_project(
+        self,
+        project_id: ProjectId,
+        key: SecretKey,
+        *,
+        exclude_secret_id: SecretId | None = None,
+    ) -> bool:
         return any(
-            secret.project_id == project_id and secret.key == key
+            secret.project_id == project_id and secret.key == key and secret.id != exclude_secret_id
             for secret in self._secrets.values()
         )
 
@@ -292,7 +343,6 @@ def build_create_use_case(unit_of_work: InMemoryUnitOfWork) -> CreateSecretVersi
 def build_list_use_case(unit_of_work: InMemoryUnitOfWork) -> ListSecretVersionsUseCase:
     return ListSecretVersionsUseCase(
         unit_of_work,
-        DecryptSecretValueUseCase(FakeCryptoProvider()),
     )
 
 
@@ -352,7 +402,8 @@ def test_create_secret_version_use_case_creates_v2_and_deactivates_v1() -> None:
         assert latest.id == second_response.id
         assert [version.version for version in history] == [1, 2]
         assert [version.active for version in history] == [False, True]
-        assert [version.value for version in history] == ["plain-value-v1", "plain-value-v2"]
+        assert all(not hasattr(version, "value") for version in history)
+        assert latest.value == "plain-value-v2"
         assert unit_of_work.committed is True
 
     anyio.run(run)

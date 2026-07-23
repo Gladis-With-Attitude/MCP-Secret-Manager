@@ -304,6 +304,8 @@ async def archive_vault(
     response_model=ProjectHttpResponse,
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid project data."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Authentication is required."},
+        status.HTTP_403_FORBIDDEN: {"description": "Project create permission is required."},
         status.HTTP_404_NOT_FOUND: {"description": "Vault not found."},
         status.HTTP_409_CONFLICT: {"description": "Project name already exists in vault."},
     },

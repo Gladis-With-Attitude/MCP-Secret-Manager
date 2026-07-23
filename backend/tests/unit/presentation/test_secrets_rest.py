@@ -8,8 +8,9 @@ import anyio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
+from application.project.use_cases import GetProjectUseCase
 from application.rbac.dto import RequirePermission
-
+from application.rbac.exceptions import AuthorizationDeniedError
 from application.secret.use_cases import (
     ArchiveSecretUseCase,
     CreateSecretUseCase,
@@ -39,6 +40,7 @@ from presentation.rest.dependencies import (
     get_authorize_use_case,
     get_create_secret_use_case,
     get_list_secrets_use_case,
+    get_project_use_case,
     get_secret_use_case,
     get_update_secret_use_case,
 )
@@ -308,20 +310,27 @@ class InMemoryUnitOfWork:
 
 
 class FakeAuthorizeUseCase:
-    def __init__(self) -> None:
+    def __init__(self, *, allowed: bool = True) -> None:
+        self.allowed = allowed
         self.requests: list[RequirePermission] = []
 
     async def execute(self, request: RequirePermission) -> None:
         self.requests.append(request)
+        if not self.allowed:
+            raise AuthorizationDeniedError("Permission denied.")
 
 
-async def build_app_with_project() -> tuple[FastAPI, Project]:
+async def build_app_with_project(
+    *,
+    authorize_use_case: FakeAuthorizeUseCase | None = None,
+) -> tuple[FastAPI, Project]:
     projects = InMemoryProjectRepository()
     secrets = InMemorySecretRepository()
     project = await projects.create(Project.create(vault_id=VaultId.new(), name=ProjectName("API")))
     unit_of_work = InMemoryUnitOfWork(projects, secrets)
     app = create_app(service_name="test-service")
-    authorize_use_case = FakeAuthorizeUseCase()
+    resolved_authorize_use_case = authorize_use_case or FakeAuthorizeUseCase()
+    app.state.authorize_use_case = resolved_authorize_use_case
 
     async def dependency() -> AsyncIterator[CreateSecretUseCase]:
         yield CreateSecretUseCase(unit_of_work)
@@ -332,6 +341,9 @@ async def build_app_with_project() -> tuple[FastAPI, Project]:
     async def get_dependency() -> AsyncIterator[GetSecretUseCase]:
         yield GetSecretUseCase(unit_of_work)
 
+    async def get_project_dependency() -> AsyncIterator[GetProjectUseCase]:
+        yield GetProjectUseCase(unit_of_work)
+
     async def update_dependency() -> AsyncIterator[UpdateSecretUseCase]:
         yield UpdateSecretUseCase(unit_of_work)
 
@@ -341,6 +353,7 @@ async def build_app_with_project() -> tuple[FastAPI, Project]:
     app.dependency_overrides[get_create_secret_use_case] = dependency
     app.dependency_overrides[get_list_secrets_use_case] = list_dependency
     app.dependency_overrides[get_secret_use_case] = get_dependency
+    app.dependency_overrides[get_project_use_case] = get_project_dependency
     app.dependency_overrides[get_update_secret_use_case] = update_dependency
     app.dependency_overrides[get_archive_secret_use_case] = archive_dependency
     app.dependency_overrides[get_authenticated_identity] = lambda: AuthenticatedIdentity(
@@ -348,7 +361,7 @@ async def build_app_with_project() -> tuple[FastAPI, Project]:
         type="user",
         api_key_id=str(VaultId.new()),
     )
-    app.dependency_overrides[get_authorize_use_case] = lambda: authorize_use_case
+    app.dependency_overrides[get_authorize_use_case] = lambda: resolved_authorize_use_case
     return app, project
 
 
@@ -477,6 +490,9 @@ def test_list_secret_endpoint_returns_project_secret_metadata() -> None:
         assert body["data"][0]["permissions"]["read_value"] is False
         assert body["pagination"]["total"] == 1
         assert body["permissions"]["create"] is True
+        assert app.state.authorize_use_case.requests[-1].permission == "secret.read"
+        assert app.state.authorize_use_case.requests[-1].scope_type == "project"
+        assert app.state.authorize_use_case.requests[-1].scope_id == str(project.id)
 
     anyio.run(run)
 
@@ -498,6 +514,11 @@ def test_get_update_and_archive_secret_metadata_end_to_end() -> None:
         get_response = await get_secret(app, secret_id)
         assert get_response.status_code == 200
         assert get_response.json()["key"] == "OPENAI_API_KEY"
+        assert app.state.authorize_use_case.requests[-1].permission == "secret.read"
+        assert app.state.authorize_use_case.requests[-1].scope_type == "secret"
+        assert app.state.authorize_use_case.requests[-1].scope_id == secret_id
+        assert app.state.authorize_use_case.requests[-1].parent_project_id == str(project.id)
+        assert app.state.authorize_use_case.requests[-1].parent_vault_id == str(project.vault_id)
 
         update_response = await patch_secret(
             app,
@@ -515,15 +536,62 @@ def test_get_update_and_archive_secret_metadata_end_to_end() -> None:
         assert update_response.json()["metadata"] == {"owner": "platform"}
         assert update_response.json()["tags"] == ["production", "openai"]
         assert update_response.json()["type"] == "token"
+        assert app.state.authorize_use_case.requests[-1].permission == "secret.update"
 
         archive_response = await archive_secret(app, secret_id)
         assert archive_response.status_code == 200
         assert archive_response.json()["archived"] is True
         assert archive_response.json()["status"] == "archived"
+        assert app.state.authorize_use_case.requests[-1].permission == "secret.archive"
 
         active_list_response = await get_project_secrets(app, str(project.id))
         archived_list_response = await get_project_secrets(app, str(project.id), "?status=archived")
         assert active_list_response.json()["data"] == []
         assert archived_list_response.json()["data"][0]["id"] == secret_id
+
+    anyio.run(run)
+
+
+def test_secret_endpoint_returns_forbidden_when_permission_is_denied() -> None:
+    async def run() -> None:
+        app, project = await build_app_with_project(
+            authorize_use_case=FakeAuthorizeUseCase(allowed=False)
+        )
+
+        response = await get_project_secrets(app, str(project.id))
+
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Permission denied."}
+
+    anyio.run(run)
+
+
+def test_secret_endpoint_requires_identity() -> None:
+    async def run() -> None:
+        app, project = await build_app_with_project()
+        created_response = await post_secret(app, str(project.id), {"key": "OPENAI_API_KEY"})
+        app.dependency_overrides.pop(get_authenticated_identity)
+
+        response = await get_secret(app, created_response.json()["id"])
+
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Authentication is required."}
+
+    anyio.run(run)
+
+
+def test_direct_secret_endpoint_rejects_cross_project_access() -> None:
+    async def run() -> None:
+        app, project = await build_app_with_project()
+        created_response = await post_secret(app, str(project.id), {"key": "OPENAI_API_KEY"})
+        denied_authorize_use_case = FakeAuthorizeUseCase(allowed=False)
+        app.dependency_overrides[get_authorize_use_case] = lambda: denied_authorize_use_case
+
+        response = await get_secret(app, created_response.json()["id"])
+
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Permission denied."}
+        assert denied_authorize_use_case.requests[-1].parent_project_id == str(project.id)
+        assert denied_authorize_use_case.requests[-1].parent_vault_id == str(project.vault_id)
 
     anyio.run(run)

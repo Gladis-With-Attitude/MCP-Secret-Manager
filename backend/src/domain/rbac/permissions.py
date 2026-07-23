@@ -12,6 +12,7 @@ DEFAULT_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("secret.create", "Create secrets."),
     ("secret.read", "Read secret metadata."),
     ("secret.update", "Update secret metadata."),
+    ("secret.archive", "Archive secrets."),
     ("secret.delete", "Delete secrets."),
     ("secret.decrypt", "Decrypt secret values."),
     ("secret.rotate", "Rotate secret values."),

@@ -38,3 +38,22 @@ class SecretVersionResponse:
             active=secret_version.active,
             created_at=secret_version.created_at.isoformat(),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SecretVersionMetadataResponse:
+    id: str
+    secret_id: str
+    version: int
+    active: bool
+    created_at: str
+
+    @classmethod
+    def from_domain(cls, secret_version: SecretVersion) -> SecretVersionMetadataResponse:
+        return cls(
+            id=str(secret_version.id),
+            secret_id=str(secret_version.secret_id),
+            version=secret_version.version.value,
+            active=secret_version.active,
+            created_at=secret_version.created_at.isoformat(),
+        )
