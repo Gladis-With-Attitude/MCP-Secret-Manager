@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 from application.audit.dto import AuditContext
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
+from application.observability import log_application_event
 from application.secret_version.dto import (
     CreateSecretVersionRequest,
     SecretVersionMetadataResponse,
@@ -29,6 +31,8 @@ from domain.secret_version.entities import SecretVersion
 from domain.secret_version.exceptions import SecretVersionDomainError
 from domain.secret_version.repositories import SecretVersionRepositoryConflictError
 from domain.secret_version.value_objects import SecretValue, SecretVersionNumber
+
+logger = logging.getLogger(__name__)
 
 
 class CreateSecretVersionUseCase:
@@ -85,6 +89,13 @@ class CreateSecretVersionUseCase:
 
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_version_create",
+                result=AuditResult.FAILURE,
+                resource_id=request.secret_id,
+                project_id=request.project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -95,6 +106,15 @@ class CreateSecretVersionUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_version_create",
+            result=AuditResult.SUCCESS,
+            resource_id=str(created_secret_version.secret_id),
+            version_id=str(created_secret_version.id),
+            version=created_secret_version.version.value,
+            active=created_secret_version.active,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -174,6 +194,13 @@ class ListSecretVersionsUseCase:
                 SecretVersionMetadataResponse.from_domain(version) for version in versions
             )
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_version_list",
+                result=AuditResult.FAILURE,
+                resource_id=secret_id,
+                project_id=project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 audit_context,
@@ -184,6 +211,13 @@ class ListSecretVersionsUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_version_list",
+            result=AuditResult.SUCCESS,
+            resource_id=str(validated_secret_id),
+            returned_count=len(response),
+        )
         await record_audit_event(
             self._audit_recorder,
             audit_context,
@@ -231,6 +265,13 @@ class GetActiveSecretVersionUseCase:
             except CryptoProviderError as exc:
                 raise SecretVersionCryptoError("Secret value decryption failed.") from exc
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_version_decrypt",
+                result=AuditResult.FAILURE,
+                resource_id=secret_id,
+                project_id=project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 audit_context,
@@ -241,6 +282,14 @@ class GetActiveSecretVersionUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_version_decrypt",
+            result=AuditResult.SUCCESS,
+            resource_id=str(validated_secret_id),
+            version_id=str(active_version.id),
+            version=active_version.version.value,
+        )
         await record_audit_event(
             self._audit_recorder,
             audit_context,

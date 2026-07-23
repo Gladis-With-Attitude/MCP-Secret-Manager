@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -481,11 +482,12 @@ def test_create_api_key_returns_full_key_once_and_stores_hash_only() -> None:
     anyio.run(run)
 
 
-def test_authenticate_api_key_accepts_valid_key() -> None:
+def test_authenticate_api_key_accepts_valid_key(caplog: pytest.LogCaptureFixture) -> None:
     async def run() -> None:
         unit_of_work = InMemoryUnitOfWork()
         raw_api_key = await create_api_key_for_user(unit_of_work)
 
+        caplog.set_level(logging.INFO, logger="application.identity.use_cases")
         response = await AuthenticateApiKeyUseCase(
             unit_of_work,
             FixedApiKeyGenerator(),
@@ -495,6 +497,18 @@ def test_authenticate_api_key_accepts_valid_key() -> None:
         assert response.type == "user"
         assert response.id != ""
         assert response.api_key_id != ""
+        assert FixedApiKeyGenerator.raw_api_key not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "api_key_authenticate",
+                "result": "success",
+                "resource_id": response.api_key_id,
+                "owner_id": response.id,
+                "owner_type": response.type,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
@@ -537,7 +551,9 @@ def test_authenticate_api_key_rejects_revoked_key() -> None:
     anyio.run(run)
 
 
-def test_authenticate_api_key_rejects_invalid_hash() -> None:
+def test_authenticate_api_key_rejects_invalid_hash(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryUnitOfWork()
         raw_api_key = await create_api_key_for_user(unit_of_work)
@@ -545,12 +561,25 @@ def test_authenticate_api_key_rejects_invalid_hash() -> None:
         assert stored is not None
         await unit_of_work.api_keys.replace(replace(stored, hashed_key="hash:different-key"))
 
+        caplog.set_level(logging.WARNING, logger="application.identity.use_cases")
         with pytest.raises(AuthenticationFailedError):
             await AuthenticateApiKeyUseCase(
                 unit_of_work,
                 FixedApiKeyGenerator(),
                 FakeApiKeyHasher(),
             ).execute(raw_api_key)
+
+        assert raw_api_key not in caplog.text
+        assert FixedApiKeyGenerator.key_prefix not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "api_key_authenticate",
+                "result": "failure",
+                "reason": "invalid_key",
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 

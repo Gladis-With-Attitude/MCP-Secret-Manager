@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
+
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
+from application.observability import log_application_event
 from application.secret.dto import (
     ArchiveSecretRequest,
     CreateSecretRequest,
@@ -37,6 +40,8 @@ from domain.secret.value_objects import (
     SecretTags,
     SecretType,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CreateSecretUseCase:
@@ -87,6 +92,12 @@ class CreateSecretUseCase:
 
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_create",
+                result=AuditResult.FAILURE,
+                project_id=request.project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -98,6 +109,16 @@ class CreateSecretUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_create",
+            result=AuditResult.SUCCESS,
+            resource_id=str(created_secret.id),
+            project_id=str(created_secret.project_id),
+            category=created_secret.type.value,
+            tags_count=len(created_secret.tags.value),
+            metadata_keys_count=len(created_secret.metadata.value),
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -203,6 +224,12 @@ class ListSecretsUseCase:
                     secret_type=secret_type,
                 )
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_list",
+                result=AuditResult.FAILURE,
+                project_id=request.project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -213,6 +240,20 @@ class ListSecretsUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_list",
+            result=AuditResult.SUCCESS,
+            project_id=str(project_id),
+            returned_count=len(secrets),
+            total_count=total,
+            page=page,
+            page_size=page_size,
+            include_archived=include_archived,
+            status_filter_configured=status is not None,
+            type_filter_configured=secret_type is not None,
+            search_configured=bool(request.search),
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -291,6 +332,13 @@ class GetSecretUseCase:
                 if secret is None or (project_id is not None and secret.project_id != project_id):
                     raise SecretNotFoundError("Secret not found.")
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_get",
+                result=AuditResult.FAILURE,
+                resource_id=request.secret_id,
+                project_id=request.project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -302,6 +350,14 @@ class GetSecretUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_get",
+            result=AuditResult.SUCCESS,
+            resource_id=str(secret.id),
+            project_id=str(secret.project_id),
+            archived=secret.archived,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -339,6 +395,13 @@ class SearchSecretsUseCase:
                 )
             matching = tuple(secret for secret in secrets if query in secret.key.value)
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_search",
+                result=AuditResult.FAILURE,
+                project_id=request.project_id,
+                query_configured=bool(request.query.strip()),
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -350,6 +413,14 @@ class SearchSecretsUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_search",
+            result=AuditResult.SUCCESS,
+            project_id=str(project_id),
+            returned_count=len(matching),
+            query_configured=bool(query),
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -412,6 +483,12 @@ class UpdateSecretUseCase:
 
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_update",
+                result=AuditResult.FAILURE,
+                resource_id=request.secret_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -423,6 +500,16 @@ class UpdateSecretUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_update",
+            result=AuditResult.SUCCESS,
+            resource_id=str(updated_secret.id),
+            project_id=str(updated_secret.project_id),
+            category=updated_secret.type.value,
+            tags_count=len(updated_secret.tags.value),
+            metadata_keys_count=len(updated_secret.metadata.value),
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -460,6 +547,12 @@ class ArchiveSecretUseCase:
                     archived_secret = await unit_of_work.secrets.update(secret.archive())
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="secret_archive",
+                result=AuditResult.FAILURE,
+                resource_id=request.secret_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -470,6 +563,14 @@ class ArchiveSecretUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="secret_archive",
+            result=AuditResult.SUCCESS,
+            resource_id=str(archived_secret.id),
+            project_id=str(archived_secret.project_id),
+            archived=archived_secret.archived,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from types import TracebackType
 from typing import Self
@@ -405,6 +406,40 @@ def test_create_secret_version_use_case_creates_v2_and_deactivates_v1() -> None:
         assert all(not hasattr(version, "value") for version in history)
         assert latest.value == "plain-value-v2"
         assert unit_of_work.committed is True
+
+    anyio.run(run)
+
+
+def test_get_active_secret_version_logs_metadata_without_secret_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run() -> None:
+        unit_of_work, secret = await build_unit_of_work_with_secret()
+        create_use_case = build_create_use_case(unit_of_work)
+        await create_use_case.execute(
+            CreateSecretVersionRequest(
+                secret_id=str(secret.id),
+                value="credential-material",
+            )
+        )
+
+        caplog.set_level(logging.INFO, logger="application.secret_version.use_cases")
+        response = await build_get_active_use_case(unit_of_work).execute(str(secret.id))
+
+        assert response.value == "plain-value-v1"
+        assert "credential-material" not in caplog.text
+        assert "plain-value-v1" not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "secret_version_decrypt",
+                "result": "success",
+                "resource_id": str(secret.id),
+                "version_id": response.id,
+                "version": 1,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 

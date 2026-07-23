@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from application.audit.dto import AuditContext
@@ -20,6 +21,7 @@ from application.identity.exceptions import (
     IdentityValidationError,
 )
 from application.identity.unit_of_work import IdentityUnitOfWork
+from application.observability import log_application_event
 from domain.audit.repositories import AuditRecorder
 from domain.audit.value_objects import AuditResult
 from domain.identity.entities import ApiKey, ServiceAccount, User
@@ -40,6 +42,8 @@ from domain.identity.value_objects import (
     UserId,
 )
 from domain.project.value_objects import ProjectId
+
+logger = logging.getLogger(__name__)
 
 
 class CreateUserUseCase:
@@ -160,6 +164,13 @@ class CreateApiKeyUseCase:
                     raise IdentityConflictError("API key persistence conflict.") from exc
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="api_key_create",
+                result=AuditResult.FAILURE,
+                owner_id=request.owner_id,
+                owner_type=request.owner_type,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -171,6 +182,15 @@ class CreateApiKeyUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="api_key_create",
+            result=AuditResult.SUCCESS,
+            resource_id=str(created.id),
+            owner_id=str(created.owner_id),
+            owner_type=created.owner_type.value,
+            expires_at_configured=created.expires_at is not None,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -263,6 +283,12 @@ class AuthenticateApiKeyUseCase:
     ) -> AuthenticatedIdentityResponse:
         key_prefix = self._api_key_generator.extract_prefix(raw_api_key)
         if key_prefix is None:
+            log_application_event(
+                logger,
+                event="api_key_authenticate",
+                result=AuditResult.FAILURE,
+                reason="invalid_prefix",
+            )
             await record_audit_event(
                 self._audit_recorder,
                 audit_context,
@@ -291,6 +317,12 @@ class AuthenticateApiKeyUseCase:
                     api_key.owner_type,
                 )
         except Exception:
+            log_application_event(
+                logger,
+                event="api_key_authenticate",
+                result=AuditResult.FAILURE,
+                reason="invalid_key",
+            )
             await record_audit_event(
                 self._audit_recorder,
                 audit_context,
@@ -306,6 +338,14 @@ class AuthenticateApiKeyUseCase:
             id=str(api_key.owner_id),
             type=api_key.owner_type.value,
             api_key_id=str(api_key.id),
+        )
+        log_application_event(
+            logger,
+            event="api_key_authenticate",
+            result=AuditResult.SUCCESS,
+            resource_id=authenticated.api_key_id,
+            owner_id=authenticated.id,
+            owner_type=authenticated.type,
         )
         await record_audit_event(
             self._audit_recorder,
