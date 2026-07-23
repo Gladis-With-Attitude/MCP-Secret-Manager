@@ -21,7 +21,7 @@ explicit `ConfigurationError` when a critical setting is missing or unsafe.
 | `MCP_SECRET_MANAGER_SERVICE_NAME` | string | `mcp-secret-manager` | no | Public service name used by health checks and logs. |
 | `MCP_SECRET_MANAGER_DEBUG` | boolean | `false` | no | Enables debug behavior. Must be `false` in production. |
 | `MCP_SECRET_MANAGER_LOG_LEVEL` | enum | `INFO` | no | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
-| `MCP_SECRET_MANAGER_LOG_JSON` | boolean | `false` | no | Reserved switch for structured JSON logs. |
+| `MCP_SECRET_MANAGER_LOG_JSON` | boolean | `false` | no | Enables structured JSON logs with safe redaction. |
 | `MCP_SECRET_MANAGER_DATABASE_URL` | string | none | yes except `test` | SQLAlchemy URL for PostgreSQL. Must use `postgresql+asyncpg`. |
 | `MCP_SECRET_MANAGER_ALEMBIC_CONFIG` | string | auto-detected | no | Alembic configuration path for migration commands. |
 | `MCP_SECRET_MANAGER_MIGRATION_WAIT_TIMEOUT_SECONDS` | integer | `60` | no | PostgreSQL readiness timeout for migrations. |
@@ -88,3 +88,14 @@ Production validation rejects:
 
 Safe configuration logs expose only non-sensitive metadata. Passwords, API keys,
 tokens, master keys and secret keys are never logged.
+
+## Observability
+
+REST responses include `X-Request-ID`. A client-supplied valid `X-Request-ID` is
+echoed back; otherwise the backend generates one. Request logs include only safe
+metadata: request id, method, route template, status code and duration.
+
+`GET /v1/metrics` exposes lightweight Prometheus-compatible counters and
+duration totals for HTTP requests in the current process. Metrics labels use
+route templates where the REST router has resolved them; request bodies,
+authorization headers, raw API keys and secret values are not exposed.

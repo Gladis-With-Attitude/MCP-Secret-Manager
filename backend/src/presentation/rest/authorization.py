@@ -10,6 +10,7 @@ from application.rbac.exceptions import AuthorizationDeniedError, RbacValidation
 from application.rbac.use_cases import AuthorizeUseCase
 from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
 from presentation.rest.dependencies import get_authorize_use_case
+from presentation.rest.observability import get_or_create_request_id
 
 AuthenticatedIdentityDependency = Annotated[
     AuthenticatedIdentity,
@@ -30,9 +31,7 @@ def permission_required(
         identity: AuthenticatedIdentityDependency,
         use_case: AuthorizeUseCaseDependency,
     ) -> None:
-        request_id = getattr(request.state, "request_id", None)
-        if not isinstance(request_id, str):
-            request_id = request.headers.get("X-Request-ID")
+        request_id = get_or_create_request_id(request)
         client_host = request.client.host if request.client is not None else None
         try:
             await use_case.execute(

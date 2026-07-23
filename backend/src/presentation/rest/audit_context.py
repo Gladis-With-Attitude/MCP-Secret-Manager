@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import uuid4
 
 from fastapi import Depends, Request
 
@@ -10,6 +9,7 @@ from presentation.rest.authentication import (
     AuthenticatedIdentity,
     get_optional_authenticated_identity,
 )
+from presentation.rest.observability import get_or_create_request_id
 
 OptionalIdentityDependency = Annotated[
     AuthenticatedIdentity | None,
@@ -21,10 +21,7 @@ def get_audit_context(
     request: Request,
     identity: OptionalIdentityDependency,
 ) -> AuditContext:
-    request_id = getattr(request.state, "request_id", None)
-    if not isinstance(request_id, str):
-        request_id = request.headers.get("X-Request-ID") or str(uuid4())
-        request.state.request_id = request_id
+    request_id = get_or_create_request_id(request)
 
     client_host = request.client.host if request.client is not None else None
     return AuditContext(

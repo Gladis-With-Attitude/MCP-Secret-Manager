@@ -71,3 +71,18 @@ Runtime configuration is centralized in
 facade `infrastructure.config`. Environment variables are documented in
 `backend/docs/ENVIRONMENT.md`; production deployment requirements are documented
 in `backend/docs/DEPLOYMENT.md`.
+
+## Observability
+
+REST responses include an `X-Request-ID` header. Clients can pass a valid
+`X-Request-ID` value to correlate their own logs with backend logs; otherwise
+the backend generates one per request.
+
+The backend records one safe HTTP request log per REST request with method,
+route template, status, duration and request id. Request bodies, authorization
+headers, API keys and secret values are not logged. Set
+`MCP_SECRET_MANAGER_LOG_JSON=true` to render structured JSON logs.
+
+`GET /v1/metrics` exposes lightweight Prometheus-compatible request counters and
+duration totals for the running process. It is intentionally minimal and does
+not replace a full Prometheus/Grafana deployment.

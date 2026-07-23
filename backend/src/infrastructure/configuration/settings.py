@@ -28,6 +28,7 @@ from infrastructure.configuration.models import (
     RuntimeEnvironment,
     SecurityConfig,
 )
+from infrastructure.logging import safe_log_extra
 
 logger = logging.getLogger(__name__)
 
@@ -318,9 +319,15 @@ def get_settings() -> AppSettings:
 
 def log_safe_runtime_configuration(settings: AppSettings) -> None:
     configuration = settings.runtime_configuration()
-    logger.info("Runtime configuration: %s", configuration.safe_summary())
+    logger.info(
+        "Runtime configuration loaded.",
+        extra=safe_log_extra(runtime_configuration=configuration.safe_summary()),
+    )
     for warning in settings.runtime_warnings():
-        logger.warning("Configuration warning: %s", warning)
+        logger.warning(
+            "Configuration warning.",
+            extra=safe_log_extra(configuration_warning=warning),
+        )
 
 
 def _split_csv(raw_value: str) -> tuple[str, ...]:
