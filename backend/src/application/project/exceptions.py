@@ -6,7 +6,7 @@ class ProjectApplicationError(RuntimeError):
 
 
 class ProjectValidationError(ProjectApplicationError):
-    """Raised when a create Project request violates validation."""
+    """Raised when a Project request violates validation."""
 
 
 class VaultNotFoundError(ProjectApplicationError):
@@ -22,4 +22,4 @@ class ProjectAlreadyExistsError(ProjectApplicationError):
 
 
 class ProjectArchivedError(ProjectApplicationError):
-    """Raised when mutating an archived Project is forbidden."""
+    """Raised when an operation is not allowed on an archived Project."""

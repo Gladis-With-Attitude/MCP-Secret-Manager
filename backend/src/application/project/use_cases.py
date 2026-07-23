@@ -48,17 +48,15 @@ class CreateProjectUseCase:
                 vault = await unit_of_work.vaults.get(vault_id)
                 if vault is None:
                     raise VaultNotFoundError("Vault not found.")
+                if vault.archived:
+                    raise VaultNotFoundError("Vault not found.")
 
                 if await unit_of_work.projects.exists_in_vault(vault_id, name):
                     raise ProjectAlreadyExistsError(
                         "A project with this name already exists in this vault."
                     )
 
-                project = Project.create(
-                    vault_id=vault_id,
-                    name=name,
-                    description=description,
-                )
+                project = Project.create(vault_id=vault_id, name=name, description=description)
 
                 try:
                     created_project = await unit_of_work.projects.create(project)
@@ -130,9 +128,11 @@ class ListProjectsUseCase:
 
     async def execute(self, request: ListProjectsRequest | str) -> ProjectListResponse:
         filters = (
-            request if isinstance(request, ListProjectsRequest) else ListProjectsRequest(request)
+            request
+            if isinstance(request, ListProjectsRequest)
+            else ListProjectsRequest(vault_id=request)
         )
-        validated_vault_id = CreateProjectUseCase._validate_vault_id(filters.vault_id)
+        vault_id = CreateProjectUseCase._validate_vault_id(filters.vault_id)
         page = self._validate_page(filters.page)
         page_size = self._validate_page_size(filters.page_size)
         status = self._validate_status(filters.status)
@@ -140,17 +140,17 @@ class ListProjectsUseCase:
         offset = (page - 1) * page_size
 
         async with self._unit_of_work as unit_of_work:
-            vault = await unit_of_work.vaults.get(validated_vault_id)
+            vault = await unit_of_work.vaults.get(vault_id)
             if vault is None:
                 raise VaultNotFoundError("Vault not found.")
             total = await unit_of_work.projects.count_by_vault(
-                validated_vault_id,
+                vault_id,
                 include_archived=include_archived,
                 search=filters.search,
                 status=status,
             )
             projects = await unit_of_work.projects.list_by_vault(
-                validated_vault_id,
+                vault_id,
                 include_archived=include_archived,
                 limit=page_size,
                 offset=offset,
@@ -233,7 +233,7 @@ class GetProjectUseCase:
             resource_type="project",
             resource_id=str(project.id),
             result=AuditResult.SUCCESS,
-            metadata={},
+            metadata={"vault_id": str(project.vault_id)},
         )
 
         return ProjectResponse.from_domain(project)
@@ -298,7 +298,10 @@ class UpdateProjectUseCase:
             resource_type="project",
             resource_id=str(updated_project.id),
             result=AuditResult.SUCCESS,
-            metadata={"name": updated_project.name.value},
+            metadata={
+                "vault_id": str(updated_project.vault_id),
+                "name": updated_project.name.value,
+            },
         )
 
         return ProjectResponse.from_domain(updated_project)
@@ -346,7 +349,7 @@ class ArchiveProjectUseCase:
             resource_type="project",
             resource_id=str(archived_project.id),
             result=AuditResult.SUCCESS,
-            metadata={},
+            metadata={"vault_id": str(archived_project.vault_id)},
         )
 
         return ProjectResponse.from_domain(archived_project)

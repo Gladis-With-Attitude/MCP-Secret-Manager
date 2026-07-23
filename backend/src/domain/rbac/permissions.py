@@ -8,7 +8,7 @@ DEFAULT_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("project.create", "Create projects."),
     ("project.read", "Read project metadata."),
     ("project.update", "Update project metadata."),
-    ("project.delete", "Delete projects."),
+    ("project.archive", "Archive projects."),
     ("secret.create", "Create secrets."),
     ("secret.read", "Read secret metadata."),
     ("secret.update", "Update secret metadata."),

@@ -313,7 +313,11 @@ async def create_project(
     payload: CreateProjectHttpRequest,
     use_case: CreateProjectUseCaseDependency,
     audit_context: AuditContextDependency,
+    identity: AuthenticatedIdentityDependency,
+    authorize_use_case: AuthorizeUseCaseDependency,
+    request: Request,
 ) -> ProjectHttpResponse:
+    await authorize_vault_scope("project.create", vault_id, identity, authorize_use_case, request)
     try:
         response = await use_case.execute(
             CreateProjectRequest(
@@ -338,18 +342,24 @@ async def create_project(
     response_model=ProjectListHttpResponse,
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid project list filters."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Authentication is required."},
+        status.HTTP_403_FORBIDDEN: {"description": "Project read permission is required."},
         status.HTTP_404_NOT_FOUND: {"description": "Vault not found."},
     },
 )
 async def list_projects(
     vault_id: str,
     use_case: ListProjectsUseCaseDependency,
+    identity: AuthenticatedIdentityDependency,
+    authorize_use_case: AuthorizeUseCaseDependency,
+    request: Request,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(alias="page_size", ge=1, le=100)] = 20,
     search: str | None = None,
     status_filter: Annotated[str | None, Query(alias="status")] = None,
     archived: bool | None = None,
 ) -> ProjectListHttpResponse:
+    await authorize_vault_scope("project.read", vault_id, identity, authorize_use_case, request)
     try:
         response = await use_case.execute(
             ListProjectsRequest(

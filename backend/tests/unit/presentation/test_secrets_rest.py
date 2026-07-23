@@ -8,6 +8,8 @@ import anyio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
+from application.rbac.dto import RequirePermission
+
 from application.secret.use_cases import (
     ArchiveSecretUseCase,
     CreateSecretUseCase,
@@ -31,8 +33,10 @@ from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
 from presentation.rest.app import create_app
+from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
 from presentation.rest.dependencies import (
     get_archive_secret_use_case,
+    get_authorize_use_case,
     get_create_secret_use_case,
     get_list_secrets_use_case,
     get_secret_use_case,
@@ -303,12 +307,21 @@ class InMemoryUnitOfWork:
         return None
 
 
+class FakeAuthorizeUseCase:
+    def __init__(self) -> None:
+        self.requests: list[RequirePermission] = []
+
+    async def execute(self, request: RequirePermission) -> None:
+        self.requests.append(request)
+
+
 async def build_app_with_project() -> tuple[FastAPI, Project]:
     projects = InMemoryProjectRepository()
     secrets = InMemorySecretRepository()
     project = await projects.create(Project.create(vault_id=VaultId.new(), name=ProjectName("API")))
     unit_of_work = InMemoryUnitOfWork(projects, secrets)
     app = create_app(service_name="test-service")
+    authorize_use_case = FakeAuthorizeUseCase()
 
     async def dependency() -> AsyncIterator[CreateSecretUseCase]:
         yield CreateSecretUseCase(unit_of_work)
@@ -330,6 +343,12 @@ async def build_app_with_project() -> tuple[FastAPI, Project]:
     app.dependency_overrides[get_secret_use_case] = get_dependency
     app.dependency_overrides[get_update_secret_use_case] = update_dependency
     app.dependency_overrides[get_archive_secret_use_case] = archive_dependency
+    app.dependency_overrides[get_authenticated_identity] = lambda: AuthenticatedIdentity(
+        id=str(VaultId.new()),
+        type="user",
+        api_key_id=str(VaultId.new()),
+    )
+    app.dependency_overrides[get_authorize_use_case] = lambda: authorize_use_case
     return app, project
 
 

@@ -29,6 +29,7 @@ USER_PERMISSIONS = tuple(
         "project.create",
         "project.read",
         "project.update",
+        "project.archive",
         "secret.create",
         "secret.read",
         "secret.update",

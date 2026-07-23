@@ -650,6 +650,14 @@ Objectif :
 
 Lister les projets d'un vault.
 
+Paramètres :
+
+- `page` : page demandée, à partir de `1` ;
+- `page_size` : nombre d'éléments par page ;
+- `search` : recherche textuelle sur le nom et la description ;
+- `status` : `active` ou `archived` ;
+- `archived` : filtre explicite sur l'état archivé.
+
 Permission :
 
 `project.read`.
@@ -657,6 +665,8 @@ Permission :
 Résultat attendu :
 
 Liste paginée de projets.
+
+Par défaut, les projets archivés ne sont pas retournés.
 
 #### POST /v1/vaults/{vault_id}/projects
 
@@ -672,6 +682,19 @@ Résultat attendu :
 
 Projet créé dans le vault.
 
+Champs retournés :
+
+- `id` ;
+- `vault_id` ;
+- `name` ;
+- `description` ;
+- `status` ;
+- `archived` ;
+- `created_at` ;
+- `updated_at` ;
+- `archived_at` ;
+- `permissions`.
+
 #### GET /v1/projects/{id}
 
 Objectif :
@@ -685,6 +708,8 @@ Permission :
 Résultat attendu :
 
 Métadonnées du projet.
+
+Les valeurs secrètes ne sont jamais exposées par cet endpoint.
 
 #### PATCH /v1/projects/{id}
 
@@ -713,6 +738,9 @@ Permission :
 Résultat attendu :
 
 Projet retiré de l'usage normal.
+
+L'opération est idempotente. Par défaut, les projets archivés ne sont plus retournés par
+`GET /v1/vaults/{vault_id}/projects` sans filtre d'archive explicite.
 
 ### Secrets
 

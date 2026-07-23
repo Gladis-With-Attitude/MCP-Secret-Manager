@@ -8,7 +8,15 @@ import anyio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 
-from application.project.use_cases import CreateProjectUseCase
+from application.project.use_cases import (
+    ArchiveProjectUseCase,
+    CreateProjectUseCase,
+    GetProjectUseCase,
+    ListProjectsUseCase,
+    UpdateProjectUseCase,
+)
+from application.rbac.dto import RequirePermission
+from application.rbac.exceptions import AuthorizationDeniedError
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectId, ProjectName
@@ -25,7 +33,15 @@ from domain.vault.entities import Vault
 from domain.vault.repositories import VaultRepository, VaultRepositoryConflictError
 from domain.vault.value_objects import VaultId, VaultName
 from presentation.rest.app import create_app
-from presentation.rest.dependencies import get_create_project_use_case
+from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
+from presentation.rest.dependencies import (
+    get_archive_project_use_case,
+    get_authorize_use_case,
+    get_create_project_use_case,
+    get_list_projects_use_case,
+    get_project_use_case,
+    get_update_project_use_case,
+)
 
 
 class InMemoryVaultRepository:
@@ -108,15 +124,16 @@ class InMemoryProjectRepository:
         search: str | None = None,
         status: str | None = None,
     ) -> Sequence[Project]:
-        _ = search
-        projects = tuple(
-            project for project in self._projects.values() if project.vault_id == vault_id
-        )
+        projects = [project for project in self._projects.values() if project.vault_id == vault_id]
         if status == "archived":
-            projects = tuple(project for project in projects if project.archived)
+            projects = [project for project in projects if project.archived]
         elif status == "active" or not include_archived:
-            projects = tuple(project for project in projects if not project.archived)
-        return projects[offset : offset + limit]
+            projects = [project for project in projects if not project.archived]
+        if search:
+            projects = [
+                project for project in projects if search.lower() in project.name.value.lower()
+            ]
+        return tuple(projects[offset : offset + limit])
 
     async def count_by_vault(
         self,
@@ -130,7 +147,7 @@ class InMemoryProjectRepository:
             await self.list_by_vault(
                 vault_id,
                 include_archived=include_archived,
-                limit=1000,
+                limit=10_000,
                 offset=0,
                 search=search,
                 status=status,
@@ -226,24 +243,73 @@ class InMemoryUnitOfWork:
         return None
 
 
-async def build_app_with_vault() -> tuple[FastAPI, Vault]:
+class FakeAuthorizeUseCase:
+    def __init__(self, *, allowed: bool = True) -> None:
+        self.allowed = allowed
+        self.requests: list[RequirePermission] = []
+
+    async def execute(self, request: RequirePermission) -> None:
+        self.requests.append(request)
+        if not self.allowed:
+            raise AuthorizationDeniedError("Permission denied.")
+
+
+async def build_app_with_vault(
+    *,
+    authorize_use_case: FakeAuthorizeUseCase | None = None,
+) -> tuple[FastAPI, Vault]:
     vaults = InMemoryVaultRepository()
     projects = InMemoryProjectRepository()
     vault = await vaults.create(Vault.create(VaultName("Production")))
     unit_of_work = InMemoryUnitOfWork(vaults, projects)
     app = create_app(service_name="test-service")
+    resolved_authorize_use_case = authorize_use_case or FakeAuthorizeUseCase()
 
-    async def dependency() -> AsyncIterator[CreateProjectUseCase]:
+    async def create_dependency() -> AsyncIterator[CreateProjectUseCase]:
         yield CreateProjectUseCase(unit_of_work)
 
-    app.dependency_overrides[get_create_project_use_case] = dependency
+    async def list_dependency() -> AsyncIterator[ListProjectsUseCase]:
+        yield ListProjectsUseCase(unit_of_work)
+
+    async def get_dependency() -> AsyncIterator[GetProjectUseCase]:
+        yield GetProjectUseCase(unit_of_work)
+
+    async def update_dependency() -> AsyncIterator[UpdateProjectUseCase]:
+        yield UpdateProjectUseCase(unit_of_work)
+
+    async def archive_dependency() -> AsyncIterator[ArchiveProjectUseCase]:
+        yield ArchiveProjectUseCase(unit_of_work)
+
+    async def authorize_dependency() -> AsyncIterator[FakeAuthorizeUseCase]:
+        yield resolved_authorize_use_case
+
+    app.dependency_overrides[get_authenticated_identity] = lambda: AuthenticatedIdentity(
+        id=str(VaultId.new()),
+        type="user",
+        api_key_id=str(VaultId.new()),
+    )
+    app.dependency_overrides[get_authorize_use_case] = authorize_dependency
+    app.dependency_overrides[get_create_project_use_case] = create_dependency
+    app.dependency_overrides[get_list_projects_use_case] = list_dependency
+    app.dependency_overrides[get_project_use_case] = get_dependency
+    app.dependency_overrides[get_update_project_use_case] = update_dependency
+    app.dependency_overrides[get_archive_project_use_case] = archive_dependency
     return app, vault
 
 
-async def post_project(app: FastAPI, vault_id: str, payload: dict[str, str]) -> Response:
+async def request(
+    app: FastAPI,
+    method: str,
+    path: str,
+    payload: dict[str, str] | None = None,
+) -> Response:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        return await client.post(f"/v1/vaults/{vault_id}/projects", json=payload)
+        return await client.request(method, path, json=payload)
+
+
+async def post_project(app: FastAPI, vault_id: str, payload: dict[str, str]) -> Response:
+    return await request(app, "POST", f"/v1/vaults/{vault_id}/projects", payload)
 
 
 def test_create_project_endpoint_returns_created_project() -> None:
@@ -256,6 +322,50 @@ def test_create_project_endpoint_returns_created_project() -> None:
         assert response.json()["vault_id"] == str(vault.id)
         assert response.json()["name"] == "API"
         assert isinstance(response.json()["id"], str)
+
+    anyio.run(run)
+
+
+def test_project_flow_rest_contract() -> None:
+    async def run() -> None:
+        app, vault = await build_app_with_vault()
+
+        created = await request(
+            app,
+            "POST",
+            f"/v1/vaults/{vault.id}/projects",
+            {"name": "  API  ", "description": "Application services"},
+        )
+        assert created.status_code == 201
+        project_id = created.json()["id"]
+        assert created.json()["name"] == "API"
+        assert created.json()["description"] == "Application services"
+
+        listed = await request(app, "GET", f"/v1/vaults/{vault.id}/projects?page=1&page_size=10")
+        assert listed.status_code == 200
+        assert listed.json()["data"][0]["id"] == project_id
+        assert listed.json()["pagination"]["total"] == 1
+
+        updated = await request(
+            app,
+            "PATCH",
+            f"/v1/projects/{project_id}",
+            {"name": "API Core", "description": "Updated"},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "API Core"
+
+        detail = await request(app, "GET", f"/v1/projects/{project_id}")
+        assert detail.status_code == 200
+        assert detail.json()["name"] == "API Core"
+
+        archived = await request(app, "POST", f"/v1/projects/{project_id}/archive")
+        assert archived.status_code == 200
+        assert archived.json()["status"] == "archived"
+
+        listed_after_archive = await request(app, "GET", f"/v1/vaults/{vault.id}/projects")
+        assert listed_after_archive.status_code == 200
+        assert listed_after_archive.json()["data"] == []
 
     anyio.run(run)
 
@@ -308,5 +418,19 @@ def test_create_project_endpoint_returns_conflict_for_duplicate_name_in_vault() 
         assert second_response.json() == {
             "detail": "A project with this name already exists in this vault."
         }
+
+    anyio.run(run)
+
+
+def test_project_endpoint_returns_forbidden_when_permission_is_denied() -> None:
+    async def run() -> None:
+        app, vault = await build_app_with_vault(
+            authorize_use_case=FakeAuthorizeUseCase(allowed=False)
+        )
+
+        response = await request(app, "GET", f"/v1/vaults/{vault.id}/projects")
+
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Permission denied."}
 
     anyio.run(run)

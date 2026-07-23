@@ -220,6 +220,7 @@ class SecretManagerMcpTools:
                 CreateProjectRequest(
                     vault_id=vault_id,
                     name=self._required_string(arguments, "name"),
+                    description=self._optional_string(arguments, "description"),
                     audit_context=audit_context,
                 )
             )

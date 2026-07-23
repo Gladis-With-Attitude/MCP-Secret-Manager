@@ -7,13 +7,27 @@ from typing import Self
 import anyio
 import pytest
 
-from application.project.dto import CreateProjectRequest
+from application.project.dto import (
+    ArchiveProjectRequest,
+    CreateProjectRequest,
+    GetProjectRequest,
+    ListProjectsRequest,
+    UpdateProjectRequest,
+)
 from application.project.exceptions import (
     ProjectAlreadyExistsError,
+    ProjectArchivedError,
+    ProjectNotFoundError,
     ProjectValidationError,
     VaultNotFoundError,
 )
-from application.project.use_cases import CreateProjectUseCase
+from application.project.use_cases import (
+    ArchiveProjectUseCase,
+    CreateProjectUseCase,
+    GetProjectUseCase,
+    ListProjectsUseCase,
+    UpdateProjectUseCase,
+)
 from domain.project.entities import Project
 from domain.project.repositories import ProjectRepository, ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectId, ProjectName
@@ -113,15 +127,17 @@ class InMemoryProjectRepository:
         search: str | None = None,
         status: str | None = None,
     ) -> Sequence[Project]:
-        _ = search
-        projects = tuple(
-            project for project in self._projects.values() if project.vault_id == vault_id
-        )
+        projects = [project for project in self._projects.values() if project.vault_id == vault_id]
         if status == "archived":
-            projects = tuple(project for project in projects if project.archived)
+            projects = [project for project in projects if project.archived]
         elif status == "active" or not include_archived:
-            projects = tuple(project for project in projects if not project.archived)
-        return projects[offset : offset + limit]
+            projects = [project for project in projects if not project.archived]
+        if search:
+            projects = [
+                project for project in projects if search.lower() in project.name.value.lower()
+            ]
+        projects = sorted(projects, key=lambda project: project.name.value)
+        return tuple(projects[offset : offset + limit])
 
     async def count_by_vault(
         self,
@@ -135,7 +151,7 @@ class InMemoryProjectRepository:
             await self.list_by_vault(
                 vault_id,
                 include_archived=include_archived,
-                limit=1000,
+                limit=10_000,
                 offset=0,
                 search=search,
                 status=status,
@@ -376,5 +392,120 @@ def test_create_project_use_case_maps_repository_conflict_to_duplicate_error() -
         assert projects.create_calls == 1
         assert unit_of_work.committed is False
         assert unit_of_work.rolled_back is True
+
+    anyio.run(run)
+
+
+def test_list_projects_use_case_returns_paginated_active_projects() -> None:
+    async def run() -> None:
+        unit_of_work, vault = await build_unit_of_work_with_vault()
+        create_use_case = CreateProjectUseCase(unit_of_work)
+        await create_use_case.execute(CreateProjectRequest(vault_id=str(vault.id), name="API"))
+        await create_use_case.execute(CreateProjectRequest(vault_id=str(vault.id), name="Worker"))
+        list_use_case = ListProjectsUseCase(unit_of_work)
+
+        response = await list_use_case.execute(
+            ListProjectsRequest(vault_id=str(vault.id), page=1, page_size=1, search="api")
+        )
+
+        assert [project.name for project in response.data] == ["API"]
+        assert response.pagination.total == 1
+        assert response.permissions.create is True
+
+    anyio.run(run)
+
+
+def test_get_project_use_case_returns_project_detail() -> None:
+    async def run() -> None:
+        unit_of_work, vault = await build_unit_of_work_with_vault()
+        created = await CreateProjectUseCase(unit_of_work).execute(
+            CreateProjectRequest(
+                vault_id=str(vault.id),
+                name="API",
+                description="Application services",
+            )
+        )
+
+        response = await GetProjectUseCase(unit_of_work).execute(
+            GetProjectRequest(project_id=created.id)
+        )
+
+        assert response.id == created.id
+        assert response.description == "Application services"
+        assert response.status == "active"
+
+    anyio.run(run)
+
+
+def test_get_project_use_case_rejects_missing_project() -> None:
+    async def run() -> None:
+        unit_of_work, _vault = await build_unit_of_work_with_vault()
+
+        with pytest.raises(ProjectNotFoundError, match="not found"):
+            await GetProjectUseCase(unit_of_work).execute(
+                GetProjectRequest(project_id=str(ProjectId.new()))
+            )
+
+    anyio.run(run)
+
+
+def test_update_project_use_case_updates_metadata() -> None:
+    async def run() -> None:
+        unit_of_work, vault = await build_unit_of_work_with_vault()
+        created = await CreateProjectUseCase(unit_of_work).execute(
+            CreateProjectRequest(vault_id=str(vault.id), name="API")
+        )
+
+        response = await UpdateProjectUseCase(unit_of_work).execute(
+            UpdateProjectRequest(
+                project_id=created.id,
+                name="API Core",
+                description="Updated metadata",
+            )
+        )
+
+        assert response.name == "API Core"
+        assert response.description == "Updated metadata"
+
+    anyio.run(run)
+
+
+def test_update_project_use_case_rejects_archived_project() -> None:
+    async def run() -> None:
+        unit_of_work, vault = await build_unit_of_work_with_vault()
+        created = await CreateProjectUseCase(unit_of_work).execute(
+            CreateProjectRequest(vault_id=str(vault.id), name="API")
+        )
+        await ArchiveProjectUseCase(unit_of_work).execute(
+            ArchiveProjectRequest(project_id=created.id)
+        )
+
+        with pytest.raises(ProjectArchivedError, match="Archived projects"):
+            await UpdateProjectUseCase(unit_of_work).execute(
+                UpdateProjectRequest(project_id=created.id, name="API Core")
+            )
+
+    anyio.run(run)
+
+
+def test_archive_project_use_case_archives_project_idempotently() -> None:
+    async def run() -> None:
+        unit_of_work, vault = await build_unit_of_work_with_vault()
+        created = await CreateProjectUseCase(unit_of_work).execute(
+            CreateProjectRequest(vault_id=str(vault.id), name="API")
+        )
+        archive_use_case = ArchiveProjectUseCase(unit_of_work)
+
+        archived = await archive_use_case.execute(ArchiveProjectRequest(project_id=created.id))
+        archived_again = await archive_use_case.execute(
+            ArchiveProjectRequest(project_id=created.id)
+        )
+        listed = await ListProjectsUseCase(unit_of_work).execute(
+            ListProjectsRequest(vault_id=str(vault.id))
+        )
+
+        assert archived.status == "archived"
+        assert archived_again.status == "archived"
+        assert listed.data == ()
 
     anyio.run(run)

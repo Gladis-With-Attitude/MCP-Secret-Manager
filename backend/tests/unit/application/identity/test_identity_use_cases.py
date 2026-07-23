@@ -141,15 +141,16 @@ class InMemoryProjectRepository:
         search: str | None = None,
         status: str | None = None,
     ) -> Sequence[Project]:
-        _ = search
-        projects = tuple(
-            project for project in self._projects.values() if project.vault_id == vault_id
-        )
+        projects = [project for project in self._projects.values() if project.vault_id == vault_id]
         if status == "archived":
-            projects = tuple(project for project in projects if project.archived)
+            projects = [project for project in projects if project.archived]
         elif status == "active" or not include_archived:
-            projects = tuple(project for project in projects if not project.archived)
-        return projects[offset : offset + limit]
+            projects = [project for project in projects if not project.archived]
+        if search:
+            projects = [
+                project for project in projects if search.lower() in project.name.value.lower()
+            ]
+        return tuple(projects[offset : offset + limit])
 
     async def count_by_vault(
         self,
@@ -163,7 +164,7 @@ class InMemoryProjectRepository:
             await self.list_by_vault(
                 vault_id,
                 include_archived=include_archived,
-                limit=1000,
+                limit=10_000,
                 offset=0,
                 search=search,
                 status=status,

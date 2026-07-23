@@ -39,6 +39,7 @@ class SqlAlchemyProjectRepository:
         if model is None:
             return project
 
+        model.vault_id = project.vault_id.value
         model.name = project.name.value
         model.description = project.description.value
         model.archived = project.archived
