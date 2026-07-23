@@ -82,6 +82,62 @@ async def get_authorize_use_case() -> NoReturn:
     )
 
 
+async def get_list_permissions_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
+async def get_list_roles_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
+async def get_role_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
+async def get_create_role_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
+async def get_update_role_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
+async def get_list_actor_roles_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
+async def get_assign_actor_role_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
+async def get_revoke_actor_role_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="RBAC persistence is not configured.",
+    )
+
+
 async def get_list_audit_events_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

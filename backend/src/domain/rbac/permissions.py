@@ -24,5 +24,6 @@ DEFAULT_PERMISSIONS: tuple[tuple[str, str], ...] = (
     ("role.create", "Create roles."),
     ("role.update", "Update roles."),
     ("role.assign", "Assign roles."),
+    ("role.revoke", "Revoke role assignments."),
     ("audit.read", "Read audit events."),
 )

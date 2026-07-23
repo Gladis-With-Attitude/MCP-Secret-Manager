@@ -1024,11 +1024,12 @@ Attribuer un rôle à un acteur.
 
 Permission :
 
-`actor.role.assign`.
+`role.assign`.
 
 Résultat attendu :
 
-Association acteur/rôle créée. L'opération doit être idempotente.
+Association acteur/rôle créée. Une association déjà existante retourne un
+conflit stable.
 
 #### DELETE /v1/actors/{actor_id}/roles/{role_id}
 
@@ -1038,7 +1039,7 @@ Retirer un rôle d'un acteur.
 
 Permission :
 
-`actor.role.revoke`.
+`role.revoke`.
 
 Résultat attendu :
 
@@ -1052,7 +1053,7 @@ Lister les permissions connues du système.
 
 Permission :
 
-`permission.read`.
+`role.read`.
 
 Résultat attendu :
 

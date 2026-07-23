@@ -33,7 +33,18 @@ from application.project.use_cases import (
     ListProjectsUseCase,
     UpdateProjectUseCase,
 )
-from application.rbac.use_cases import AuthorizeUseCase, PermissionChecker
+from application.rbac.use_cases import (
+    AssignActorRoleUseCase,
+    AuthorizeUseCase,
+    CreateRoleUseCase,
+    GetRoleUseCase,
+    ListActorRolesUseCase,
+    ListPermissionsUseCase,
+    ListRolesUseCase,
+    PermissionChecker,
+    RevokeActorRoleUseCase,
+    UpdateRoleUseCase,
+)
 from application.secret.use_cases import (
     ArchiveSecretUseCase,
     CreateSecretUseCase,
@@ -80,9 +91,11 @@ from presentation.rest.dependencies import (
     get_archive_project_use_case,
     get_archive_secret_use_case,
     get_archive_vault_use_case,
+    get_assign_actor_role_use_case,
     get_authorize_use_case,
     get_create_api_key_use_case,
     get_create_project_use_case,
+    get_create_role_use_case,
     get_create_secret_use_case,
     get_create_secret_version_use_case,
     get_create_service_account_use_case,
@@ -90,20 +103,26 @@ from presentation.rest.dependencies import (
     get_create_user_use_case,
     get_create_vault_use_case,
     get_current_session_use_case,
+    get_list_actor_roles_use_case,
     get_list_api_keys_use_case,
     get_list_audit_events_use_case,
+    get_list_permissions_use_case,
     get_list_projects_use_case,
+    get_list_roles_use_case,
     get_list_secret_versions_use_case,
     get_list_secrets_use_case,
     get_list_vaults_use_case,
     get_project_use_case,
     get_restore_secret_version_use_case,
+    get_revoke_actor_role_use_case,
     get_revoke_api_key_use_case,
     get_revoke_current_session_use_case,
+    get_role_use_case,
     get_secret_use_case,
     get_secret_version_metadata_use_case,
     get_update_api_key_use_case,
     get_update_project_use_case,
+    get_update_role_use_case,
     get_update_secret_use_case,
     get_update_vault_use_case,
     get_vault_use_case,
@@ -353,6 +372,45 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 audit_recorder=audit_recorder,
             )
 
+        def list_permissions_use_case() -> ListPermissionsUseCase:
+            return ListPermissionsUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def list_roles_use_case() -> ListRolesUseCase:
+            return ListRolesUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def build_get_role_use_case() -> GetRoleUseCase:
+            return GetRoleUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def create_role_use_case() -> CreateRoleUseCase:
+            return CreateRoleUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def update_role_use_case() -> UpdateRoleUseCase:
+            return UpdateRoleUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def list_actor_roles_use_case() -> ListActorRolesUseCase:
+            return ListActorRolesUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def assign_actor_role_use_case() -> AssignActorRoleUseCase:
+            return AssignActorRoleUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def revoke_actor_role_use_case() -> RevokeActorRoleUseCase:
+            return RevokeActorRoleUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
         def list_audit_events_use_case() -> ListAuditEventsUseCase:
             return ListAuditEventsUseCase(SqlAlchemyUnitOfWork(session_factory))
 
@@ -465,6 +523,14 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
             revoke_current_session_use_case
         )
         app.dependency_overrides[get_authorize_use_case] = authorize_use_case
+        app.dependency_overrides[get_list_permissions_use_case] = list_permissions_use_case
+        app.dependency_overrides[get_list_roles_use_case] = list_roles_use_case
+        app.dependency_overrides[get_role_use_case] = build_get_role_use_case
+        app.dependency_overrides[get_create_role_use_case] = create_role_use_case
+        app.dependency_overrides[get_update_role_use_case] = update_role_use_case
+        app.dependency_overrides[get_list_actor_roles_use_case] = list_actor_roles_use_case
+        app.dependency_overrides[get_assign_actor_role_use_case] = assign_actor_role_use_case
+        app.dependency_overrides[get_revoke_actor_role_use_case] = revoke_actor_role_use_case
         app.dependency_overrides[get_list_audit_events_use_case] = list_audit_events_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case
         app.dependency_overrides[get_list_projects_use_case] = list_projects_use_case

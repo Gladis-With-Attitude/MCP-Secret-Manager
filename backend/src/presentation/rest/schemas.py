@@ -13,6 +13,15 @@ from application.identity.dto import (
     UserResponse,
 )
 from application.project.dto import ProjectListResponse, ProjectResponse
+from application.rbac.dto import (
+    PermissionListResponse,
+    PermissionResponse,
+    RoleListResponse,
+    RolePermissionsResponse,
+    RoleResponse,
+    UserRoleListResponse,
+    UserRoleResponse,
+)
 from application.secret.dto import SecretListResponse, SecretResponse
 from application.secret_version.dto import SecretVersionMetadataResponse, SecretVersionResponse
 from application.vault.dto import VaultListResponse, VaultResponse
@@ -598,6 +607,171 @@ class CurrentSessionHttpResponse(BaseModel):
                 name=response.name,
                 profile_label=response.profile_label,
             ),
+        )
+
+
+class CreateRoleHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = None
+    name: str
+    permission_ids: list[str] = Field(default_factory=list)
+
+
+class UpdateRoleHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = None
+    name: str
+    permission_ids: list[str] = Field(default_factory=list)
+
+
+class PermissionHttpResponse(BaseModel):
+    action: str
+    description: str | None
+    group: str
+    id: str
+    name: str
+    resource: str
+    sensitivity: str
+
+    @classmethod
+    def from_application(cls, response: PermissionResponse) -> PermissionHttpResponse:
+        return cls(
+            action=response.action,
+            description=response.description,
+            group=response.group,
+            id=response.id,
+            name=response.name,
+            resource=response.resource,
+            sensitivity=response.sensitivity,
+        )
+
+
+class RbacPermissionHttpResponse(BaseModel):
+    assign: bool
+    create: bool
+    read: bool
+    revoke: bool
+    update: bool
+
+    @classmethod
+    def from_application(cls, response: RolePermissionsResponse) -> RbacPermissionHttpResponse:
+        return cls(
+            assign=response.assign,
+            create=response.create,
+            read=response.read,
+            revoke=response.revoke,
+            update=response.update,
+        )
+
+
+class RoleHttpResponse(BaseModel):
+    assignments_count: int
+    description: str | None
+    id: str
+    is_system: bool
+    kind: str
+    name: str
+    permission_ids: list[str]
+    permissions: list[PermissionHttpResponse]
+    permissions_count: int
+    status: str
+    ui_permissions: RbacPermissionHttpResponse
+
+    @classmethod
+    def from_application(cls, response: RoleResponse) -> RoleHttpResponse:
+        return cls(
+            assignments_count=response.assignments_count,
+            description=response.description,
+            id=response.id,
+            is_system=response.is_system,
+            kind=response.kind,
+            name=response.name,
+            permission_ids=list(response.permission_ids),
+            permissions=[
+                PermissionHttpResponse.from_application(permission)
+                for permission in response.permissions
+            ],
+            permissions_count=response.permissions_count,
+            status=response.status,
+            ui_permissions=RbacPermissionHttpResponse.from_application(response.ui_permissions),
+        )
+
+
+class RoleListHttpResponse(BaseModel):
+    data: list[RoleHttpResponse]
+    limit: int
+    offset: int
+    permissions: RbacPermissionHttpResponse
+    total: int
+
+    @classmethod
+    def from_application(cls, response: RoleListResponse) -> RoleListHttpResponse:
+        return cls(
+            data=[RoleHttpResponse.from_application(role) for role in response.data],
+            limit=response.limit,
+            offset=response.offset,
+            permissions=RbacPermissionHttpResponse.from_application(response.permissions),
+            total=response.total,
+        )
+
+
+class PermissionListHttpResponse(BaseModel):
+    data: list[PermissionHttpResponse]
+
+    @classmethod
+    def from_application(
+        cls,
+        response: PermissionListResponse,
+    ) -> PermissionListHttpResponse:
+        return cls(
+            data=[
+                PermissionHttpResponse.from_application(permission) for permission in response.data
+            ]
+        )
+
+
+class UserRoleHttpResponse(BaseModel):
+    actor_id: str
+    assigned_at: str
+    assigned_by: str | None
+    id: str
+    role_id: str
+    role_name: str
+    scope_id: str | None
+    scope_type: str
+    status: str
+
+    @classmethod
+    def from_application(cls, response: UserRoleResponse) -> UserRoleHttpResponse:
+        return cls(
+            actor_id=response.actor_id,
+            assigned_at=response.assigned_at,
+            assigned_by=response.assigned_by,
+            id=response.id,
+            role_id=response.role_id,
+            role_name=response.role_name,
+            scope_id=response.scope_id,
+            scope_type=response.scope_type,
+            status=response.status,
+        )
+
+
+class UserRoleListHttpResponse(BaseModel):
+    actor_id: str
+    data: list[UserRoleHttpResponse]
+    permissions: RbacPermissionHttpResponse
+
+    @classmethod
+    def from_application(
+        cls,
+        response: UserRoleListResponse,
+    ) -> UserRoleListHttpResponse:
+        return cls(
+            actor_id=response.actor_id,
+            data=[UserRoleHttpResponse.from_application(item) for item in response.data],
+            permissions=RbacPermissionHttpResponse.from_application(response.permissions),
         )
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Protocol
 
+from domain.identity.repositories import ServiceAccountRepository, UserRepository
 from domain.rbac.repositories import PermissionRepository, RoleAssignmentRepository, RoleRepository
 
 
@@ -17,6 +18,14 @@ class RbacUnitOfWork(Protocol):
 
     @property
     def role_assignments(self) -> RoleAssignmentRepository:
+        raise NotImplementedError
+
+    @property
+    def users(self) -> UserRepository:
+        raise NotImplementedError
+
+    @property
+    def service_accounts(self) -> ServiceAccountRepository:
         raise NotImplementedError
 
     async def __aenter__(self) -> RbacUnitOfWork:

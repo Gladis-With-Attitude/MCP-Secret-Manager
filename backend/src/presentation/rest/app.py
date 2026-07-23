@@ -14,6 +14,7 @@ from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
 from presentation.rest.identity import router as identity_router
 from presentation.rest.observability import InMemoryHttpMetrics, RequestObservabilityMiddleware
 from presentation.rest.projects import router as projects_router
+from presentation.rest.rbac import router as rbac_router
 from presentation.rest.secrets import router as secrets_router
 from presentation.rest.vaults import router as vaults_router
 
@@ -65,6 +66,7 @@ def create_app(
     app.include_router(projects_router)
     app.include_router(secrets_router)
     app.include_router(identity_router)
+    app.include_router(rbac_router)
     app.include_router(audit_router)
     app.add_middleware(
         ApiKeyAuthenticationMiddleware,
