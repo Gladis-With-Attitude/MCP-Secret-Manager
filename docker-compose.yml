@@ -147,11 +147,32 @@ services:
     networks:
       - mcp_secret_manager
 
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    container_name: mcp-secret-manager-prometheus
+    profiles:
+      - observability
+    depends_on:
+      - backend
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - mcp_secret_manager
+
 networks:
   mcp_secret_manager:
     driver: bridge
 
 volumes:
   postgres_data:
+  prometheus_data:
   frontend_node_modules:
   frontend_next:

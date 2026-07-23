@@ -57,6 +57,31 @@ request ids and safe HTTP metadata, but never request bodies, authorization
 headers, raw API keys or secret values.
 
 The REST API exposes `GET /v1/metrics` with lightweight Prometheus-compatible
-process-local HTTP request counters and duration totals. Full Prometheus
-scraping, Grafana dashboards and OpenTelemetry tracing remain separate D1
-follow-up work.
+process-local HTTP request counters and duration totals.
+
+The local Compose stack includes an opt-in Prometheus service for operators who
+want to scrape the endpoint without adding managed infrastructure:
+
+```bash
+make up-observability
+curl -fsS http://127.0.0.1:8000/v1/metrics
+curl -fsS 'http://127.0.0.1:9090/api/v1/targets?state=active'
+```
+
+Prometheus reads `monitoring/prometheus/prometheus.yml`, which scrapes
+`backend:8000/v1/metrics` inside the Compose network. The Prometheus UI is bound
+to `127.0.0.1:${PROMETHEUS_PORT:-9090}` by default and should stay restricted to
+trusted operator networks. Set `PROMETHEUS_IMAGE` to a pinned image tag for
+repeatable production-like deployments. If `/v1/metrics` is exposed outside a
+private service network, protect it at the ingress or reverse proxy layer; the
+metrics endpoint does not include request bodies, authorization headers, API
+keys or secret values, but it can reveal operational metadata such as route
+templates and status counts.
+
+Validate the checked-in wiring before deployment changes with:
+
+```bash
+docker compose --env-file .env.example --profile observability config
+```
+
+Grafana dashboards and OpenTelemetry tracing remain separate D1 follow-up work.
