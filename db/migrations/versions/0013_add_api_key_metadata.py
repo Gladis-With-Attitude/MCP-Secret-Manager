@@ -1,7 +1,7 @@
 """add api key metadata
 
 Revision ID: 0013_add_api_key_metadata
-Revises: 0012_create_auth_sessions
+Revises: 0012_auth_sessions
 Create Date: 2026-07-23
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0013_add_api_key_metadata"
-down_revision = "0012_create_auth_sessions"
+down_revision = "0012_auth_sessions"
 branch_labels = None
 depends_on = None
 

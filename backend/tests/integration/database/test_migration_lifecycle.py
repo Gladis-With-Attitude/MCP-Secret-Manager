@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from infrastructure import database_migrations
 from infrastructure.config import AppSettings
 
-HEAD_REVISION = "0008_create_audit_events"
-PREVIOUS_REVISION = "0007_create_rbac_tables"
+HEAD_REVISION = "0013_add_api_key_metadata"
+PREVIOUS_REVISION = "0012_auth_sessions"
 
 
 def quote_identifier(value: str) -> str:

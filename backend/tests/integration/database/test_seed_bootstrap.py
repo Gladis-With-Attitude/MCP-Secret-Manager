@@ -121,7 +121,7 @@ def test_seed_bootstrap_is_idempotent_on_postgresql_database(
         )
         assert (
             asyncio.run(scalar(seeded_database_url, "SELECT version_num FROM alembic_version"))
-            == "0008_create_audit_events"
+            == "0013_add_api_key_metadata"
         )
     finally:
         asyncio.run(drop_database(database_url, database_name))
