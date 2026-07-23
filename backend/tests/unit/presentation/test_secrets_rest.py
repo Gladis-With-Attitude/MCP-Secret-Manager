@@ -487,6 +487,7 @@ def test_list_secret_endpoint_returns_project_secret_metadata() -> None:
         body = response.json()
         assert body["data"][0]["key"] == "OPENAI_API_KEY"
         assert body["data"][0]["type"] == "api_key"
+        assert "value" not in body["data"][0]
         assert body["data"][0]["permissions"]["read_value"] is False
         assert body["pagination"]["total"] == 1
         assert body["permissions"]["create"] is True

@@ -185,12 +185,11 @@ class FakeCreateSecretVersionUseCase:
     def __init__(self) -> None:
         self.requests: list[CreateSecretVersionRequest] = []
 
-    async def execute(self, request: CreateSecretVersionRequest) -> SecretVersionResponse:
+    async def execute(self, request: CreateSecretVersionRequest) -> SecretVersionMetadataResponse:
         self.requests.append(request)
-        return SecretVersionResponse(
+        return SecretVersionMetadataResponse(
             id="version-1",
             secret_id=request.secret_id,
-            value=request.value,
             version=1,
             active=True,
             created_at="2026-07-21T12:00:00+00:00",
@@ -318,6 +317,7 @@ def test_mcp_server_exposes_required_tools() -> None:
         "get_secret",
         "create_secret_version",
         "list_secret_versions",
+        "get_secret_value",
         "rotate_secret",
         "search_secrets",
         "health",
@@ -377,11 +377,37 @@ def test_mcp_rotate_secret_passes_project_scope_to_use_case() -> None:
 
         assert isinstance(result.content, Mapping)
         assert result.content["version"] == 1
+        assert "value" not in result.content
         assert authorize_use_case.requests[0].permission == "secret.rotate"
         assert authorize_use_case.requests[0].scope_id == "project-1"
         assert version_use_case.requests[0].project_id == "project-1"
         assert version_use_case.requests[0].audit_context is not None
         assert version_use_case.requests[0].audit_context.protocol == "mcp"
+
+    anyio.run(run)
+
+
+def test_mcp_get_secret_value_requires_decrypt_permission_and_returns_value() -> None:
+    async def run() -> None:
+        server, authorize_use_case, _create_vault_use_case, _version_use_case = build_server()
+
+        result = await server.call_tool(
+            "get_secret_value",
+            {"project_id": "project-1", "secret_id": "secret-1"},
+            auth_context(),
+        )
+
+        assert result.content == {
+            "id": "version-1",
+            "secret_id": "secret-1",
+            "value": "secret-value",
+            "version": 1,
+            "active": True,
+            "created_at": "2026-07-21T12:00:00+00:00",
+        }
+        assert authorize_use_case.requests[0].permission == "secret.decrypt"
+        assert authorize_use_case.requests[0].scope_type == "project"
+        assert authorize_use_case.requests[0].scope_id == "project-1"
 
     anyio.run(run)
 

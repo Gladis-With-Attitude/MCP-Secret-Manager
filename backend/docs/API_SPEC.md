@@ -1226,6 +1226,23 @@ Un client ne doit voir que les ressources pour lesquelles il possède la permiss
 
 Pour l'audit, les filtres doivent aider l'investigation sans exposer de valeurs secrètes.
 
+### Implémentation actuelle REST/MCP des valeurs secrètes
+
+Dans l'implémentation actuelle, les routes et tools de collection restent
+metadata-only :
+
+- `GET /v1/projects/{project_id}/secrets` ne retourne jamais `value` ;
+- `GET /v1/secrets/{secret_id}/versions` ne retourne jamais `value` ;
+- `POST /v1/secrets/{secret_id}/versions` crée une version mais retourne
+  uniquement les métadonnées de version ;
+- les tools MCP `list_secrets`, `search_secrets`, `list_secret_versions`,
+  `create_secret_version` et `rotate_secret` ne retournent jamais `value`.
+
+La lecture d'une valeur doit passer par une opération explicite, auditée et
+autorisée avec `secret.decrypt`, par exemple
+`GET /v1/secrets/{secret_id}/versions/latest` côté REST ou `get_secret_value`
+côté MCP.
+
 ## 9. Idempotence
 
 L'idempotence réduit les effets indésirables lors de retries réseau.

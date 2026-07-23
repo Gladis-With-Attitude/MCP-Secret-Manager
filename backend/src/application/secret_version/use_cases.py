@@ -42,7 +42,7 @@ class CreateSecretVersionUseCase:
         self._encrypt_secret_value_use_case = encrypt_secret_value_use_case
         self._audit_recorder = audit_recorder or NoopAuditRecorder()
 
-    async def execute(self, request: CreateSecretVersionRequest) -> SecretVersionResponse:
+    async def execute(self, request: CreateSecretVersionRequest) -> SecretVersionMetadataResponse:
         try:
             secret_id = self._validate_secret_id(request.secret_id)
             value = self._validate_value(request.value)
@@ -105,7 +105,7 @@ class CreateSecretVersionUseCase:
             metadata={"version": created_secret_version.version.value},
         )
 
-        return SecretVersionResponse.from_domain(created_secret_version, value)
+        return SecretVersionMetadataResponse.from_domain(created_secret_version)
 
     @staticmethod
     def _next_version_number(versions: Sequence[SecretVersion]) -> SecretVersionNumber:

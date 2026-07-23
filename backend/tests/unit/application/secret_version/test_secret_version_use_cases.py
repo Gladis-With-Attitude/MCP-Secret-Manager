@@ -366,7 +366,7 @@ def test_create_secret_version_use_case_creates_v1_as_active() -> None:
         )
 
         assert response.secret_id == str(secret.id)
-        assert response.value == "plain-value-v1"
+        assert not hasattr(response, "value")
         assert response.version == 1
         assert response.active is True
         assert isinstance(repository, InMemorySecretVersionRepository)

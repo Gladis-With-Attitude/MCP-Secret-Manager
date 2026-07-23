@@ -146,6 +146,14 @@ class SecretManagerMcpTools:
             ),
             (
                 self._tool(
+                    "get_secret_value",
+                    "Get the latest decrypted secret value.",
+                    {"project_id": "string", "secret_id": "string"},
+                ),
+                self.get_secret_value,
+            ),
+            (
+                self._tool(
                     "rotate_secret",
                     "Rotate a secret value by creating a new version.",
                     {"project_id": "string", "secret_id": "string", "value": "string"},
@@ -316,6 +324,23 @@ class SecretManagerMcpTools:
         )
         return McpToolResult([self._secret_version_metadata(item) for item in response])
 
+    async def get_secret_value(
+        self,
+        arguments: Mapping[str, JsonValue],
+        auth_context: McpAuthContext,
+    ) -> McpToolResult:
+        project_id = self._required_string(arguments, "project_id")
+        identity, audit_context = await self._authenticate(auth_context)
+        await self._authorize(identity, "secret.decrypt", "project", project_id, auth_context)
+        response = await self._call_application(
+            self._get_active_secret_version_use_case.execute(
+                self._required_string(arguments, "secret_id"),
+                audit_context=audit_context,
+                project_id=project_id,
+            )
+        )
+        return McpToolResult(self._secret_version_value(response))
+
     async def search_secrets(
         self,
         arguments: Mapping[str, JsonValue],
@@ -353,7 +378,7 @@ class SecretManagerMcpTools:
                 )
             )
         )
-        return McpToolResult(self._secret_version(response))
+        return McpToolResult(self._secret_version_metadata(response))
 
     async def _authenticate(
         self,
@@ -481,7 +506,7 @@ class SecretManagerMcpTools:
         }
 
     @staticmethod
-    def _secret_version(response: SecretVersionResponse) -> JsonObject:
+    def _secret_version_value(response: SecretVersionResponse) -> JsonObject:
         return {
             "id": response.id,
             "secret_id": response.secret_id,

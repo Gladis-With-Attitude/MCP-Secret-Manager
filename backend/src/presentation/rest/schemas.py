@@ -307,7 +307,7 @@ class CreateSecretVersionHttpRequest(BaseModel):
     value: str
 
 
-class SecretVersionHttpResponse(BaseModel):
+class SecretVersionValueHttpResponse(BaseModel):
     id: str
     secret_id: str
     value: str
@@ -316,7 +316,7 @@ class SecretVersionHttpResponse(BaseModel):
     created_at: str
 
     @classmethod
-    def from_application(cls, response: SecretVersionResponse) -> SecretVersionHttpResponse:
+    def from_application(cls, response: SecretVersionResponse) -> SecretVersionValueHttpResponse:
         return cls(
             id=response.id,
             secret_id=response.secret_id,

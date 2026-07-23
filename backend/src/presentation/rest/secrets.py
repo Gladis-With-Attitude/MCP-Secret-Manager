@@ -52,8 +52,8 @@ from presentation.rest.dependencies import (
 from presentation.rest.schemas import (
     CreateSecretVersionHttpRequest,
     SecretHttpResponse,
-    SecretVersionHttpResponse,
     SecretVersionMetadataHttpResponse,
+    SecretVersionValueHttpResponse,
     UpdateSecretHttpRequest,
 )
 
@@ -307,7 +307,7 @@ async def archive_secret(
 @router.post(
     "/{secret_id}/versions",
     status_code=status.HTTP_201_CREATED,
-    response_model=SecretVersionHttpResponse,
+    response_model=SecretVersionMetadataHttpResponse,
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid secret version data."},
         status.HTTP_401_UNAUTHORIZED: {"description": "Authentication is required."},
@@ -327,7 +327,7 @@ async def create_secret_version(
     identity: AuthenticatedIdentityDependency,
     authorize_use_case: AuthorizeUseCaseDependency,
     request: Request,
-) -> SecretVersionHttpResponse:
+) -> SecretVersionMetadataHttpResponse:
     secret = await authorize_existing_secret(
         "secret.rotate",
         secret_id,
@@ -359,7 +359,7 @@ async def create_secret_version(
             detail="Secret version cryptographic operation failed.",
         ) from exc
 
-    return SecretVersionHttpResponse.from_application(response)
+    return SecretVersionMetadataHttpResponse.from_application(response)
 
 
 @router.get(
@@ -408,7 +408,7 @@ async def list_secret_versions(
 
 @router.get(
     "/{secret_id}/versions/latest",
-    response_model=SecretVersionHttpResponse,
+    response_model=SecretVersionValueHttpResponse,
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid secret id."},
         status.HTTP_401_UNAUTHORIZED: {"description": "Authentication is required."},
@@ -426,7 +426,7 @@ async def get_latest_secret_version(
     identity: AuthenticatedIdentityDependency,
     authorize_use_case: AuthorizeUseCaseDependency,
     request: Request,
-) -> SecretVersionHttpResponse:
+) -> SecretVersionValueHttpResponse:
     secret = await authorize_existing_secret(
         "secret.decrypt",
         secret_id,
@@ -453,4 +453,4 @@ async def get_latest_secret_version(
             detail="Secret version cryptographic operation failed.",
         ) from exc
 
-    return SecretVersionHttpResponse.from_application(response)
+    return SecretVersionValueHttpResponse.from_application(response)

@@ -1,6 +1,10 @@
 """SecretVersion application use cases."""
 
-from application.secret_version.dto import CreateSecretVersionRequest, SecretVersionResponse
+from application.secret_version.dto import (
+    CreateSecretVersionRequest,
+    SecretVersionMetadataResponse,
+    SecretVersionResponse,
+)
 from application.secret_version.exceptions import (
     SecretNotFoundError,
     SecretVersionConflictError,
@@ -20,6 +24,7 @@ __all__ = [
     "ListSecretVersionsUseCase",
     "SecretNotFoundError",
     "SecretVersionConflictError",
+    "SecretVersionMetadataResponse",
     "SecretVersionNotFoundError",
     "SecretVersionResponse",
     "SecretVersionValidationError",
