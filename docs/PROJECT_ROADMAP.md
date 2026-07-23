@@ -107,6 +107,13 @@ Test in particular:
 
 Objective: transform the MVP into a production-ready product.
 
+### D0 - Security Readiness Slices
+
+| ID | Status | Scope |
+| --- | --- | --- |
+| S1 | ✅ | REST RBAC enforcement for protected resources |
+| S2 | ✅ | Metadata-only bulk secret contracts and explicit `secret.decrypt` value access across REST/MCP |
+
 ### D1 - Observability
 
 - Structured logging

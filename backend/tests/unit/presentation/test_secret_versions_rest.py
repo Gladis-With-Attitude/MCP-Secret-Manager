@@ -443,7 +443,7 @@ def test_create_secret_version_endpoint_returns_created_v1() -> None:
         assert response.status_code == 201
         payload = response.json()
         assert payload["secret_id"] == str(secret.id)
-        assert payload["value"] == "plain-value-v1"
+        assert "value" not in payload
         assert payload["version"] == 1
         assert payload["active"] is True
         assert isinstance(payload["id"], str)
