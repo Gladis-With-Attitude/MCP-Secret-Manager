@@ -13,18 +13,24 @@ import pytest
 from application.identity.dto import (
     CreateApiKeyRequest,
     CreateServiceAccountRequest,
+    CreateSessionRequest,
     CreateUserRequest,
 )
 from application.identity.exceptions import AuthenticationFailedError, IdentityNotFoundError
 from application.identity.use_cases import (
     AuthenticateApiKeyUseCase,
+    AuthenticateSessionUseCase,
     CreateApiKeyUseCase,
     CreateServiceAccountUseCase,
+    CreateSessionUseCase,
     CreateUserUseCase,
+    GetCurrentSessionUseCase,
+    RevokeCurrentSessionUseCase,
 )
-from domain.identity.entities import ApiKey, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
 from domain.identity.repositories import (
     ApiKeyRepositoryConflictError,
+    AuthSessionRepositoryConflictError,
     ServiceAccountRepository,
     ServiceAccountRepositoryConflictError,
     UserRepository,
@@ -35,6 +41,7 @@ from domain.identity.value_objects import (
     ApiKeyOwnerType,
     ServiceAccountId,
     ServiceAccountName,
+    SessionId,
     UserEmail,
     UserId,
 )
@@ -113,6 +120,34 @@ class InMemoryApiKeyRepository:
 
     async def replace(self, api_key: ApiKey) -> None:
         self._api_keys[api_key.id] = api_key
+
+
+class InMemoryAuthSessionRepository:
+    def __init__(self) -> None:
+        self._auth_sessions: dict[SessionId, AuthSession] = {}
+
+    async def create(self, auth_session: AuthSession) -> AuthSession:
+        if await self.get_by_prefix(auth_session.token_prefix) is not None:
+            raise AuthSessionRepositoryConflictError("Session already exists.")
+        self._auth_sessions[auth_session.id] = auth_session
+        return auth_session
+
+    async def get(self, session_id: SessionId) -> AuthSession | None:
+        return self._auth_sessions.get(session_id)
+
+    async def get_by_prefix(self, token_prefix: str) -> AuthSession | None:
+        return next(
+            (
+                auth_session
+                for auth_session in self._auth_sessions.values()
+                if auth_session.token_prefix == token_prefix
+            ),
+            None,
+        )
+
+    async def update(self, auth_session: AuthSession) -> AuthSession:
+        self._auth_sessions[auth_session.id] = auth_session
+        return auth_session
 
 
 class InMemoryProjectRepository:
@@ -309,6 +344,7 @@ class InMemoryUnitOfWork:
         self._users = InMemoryUserRepository()
         self._service_accounts = InMemoryServiceAccountRepository()
         self._api_keys = InMemoryApiKeyRepository()
+        self._auth_sessions = InMemoryAuthSessionRepository()
         self.committed = False
         self.rolled_back = False
 
@@ -339,6 +375,10 @@ class InMemoryUnitOfWork:
     @property
     def api_keys(self) -> InMemoryApiKeyRepository:
         return self._api_keys
+
+    @property
+    def auth_sessions(self) -> InMemoryAuthSessionRepository:
+        return self._auth_sessions
 
     async def __aenter__(self) -> Self:
         return self
@@ -372,6 +412,26 @@ class FixedApiKeyGenerator:
         if api_key != self.raw_api_key:
             return None
         return self.key_prefix
+
+
+FAKE_BROWSER_SESSION_VALUE = (
+    "mcp_sm_session_0123456789abcdef_"
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+)
+FAKE_BROWSER_SESSION_PREFIX = "mcp_sm_session_0123456789abcdef"
+
+
+class FixedSessionTokenGenerator:
+    raw_session_token = FAKE_BROWSER_SESSION_VALUE
+    token_prefix = FAKE_BROWSER_SESSION_PREFIX
+
+    def generate(self) -> str:
+        return self.raw_session_token
+
+    def extract_prefix(self, session_token: str) -> str | None:
+        if session_token != self.raw_session_token:
+            return None
+        return self.token_prefix
 
 
 class FakeApiKeyHasher:
@@ -514,6 +574,101 @@ def test_authenticate_api_key_accepts_valid_key(caplog: pytest.LogCaptureFixture
             }.items()
             for record in caplog.records
         )
+
+    anyio.run(run)
+
+
+def test_get_current_session_returns_authenticated_user_metadata() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        raw_api_key = await create_api_key_for_user(unit_of_work)
+        authenticated = await AuthenticateApiKeyUseCase(
+            unit_of_work,
+            FixedApiKeyGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(raw_api_key)
+
+        response = await GetCurrentSessionUseCase(unit_of_work).execute(authenticated.api_key_id)
+
+        assert response.auth_method == "api_key"
+        assert response.api_key_id == authenticated.api_key_id
+        assert response.user_id == authenticated.id
+        assert response.user_type == "user"
+        assert response.email == "user@example.com"
+        assert response.name == "Ada Lovelace"
+        assert response.profile_label == "User"
+        assert response.issued_at
+        assert response.expires_at is None
+
+    anyio.run(run)
+
+
+def test_get_current_session_rejects_missing_api_key() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        await create_user(unit_of_work)
+
+        with pytest.raises(AuthenticationFailedError, match="Invalid session"):
+            await GetCurrentSessionUseCase(unit_of_work).execute(str(ApiKeyId.new()))
+
+    anyio.run(run)
+
+
+def test_create_and_authenticate_session_persists_hash_only() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        raw_api_key = await create_api_key_for_user(unit_of_work)
+
+        created = await CreateSessionUseCase(
+            unit_of_work,
+            FixedApiKeyGenerator(),
+            FakeApiKeyHasher(),
+            FixedSessionTokenGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(CreateSessionRequest(api_key=raw_api_key))
+        stored = await unit_of_work.auth_sessions.get_by_prefix(
+            FixedSessionTokenGenerator.token_prefix
+        )
+        authenticated = await AuthenticateSessionUseCase(
+            unit_of_work,
+            FixedSessionTokenGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(created.session_token)
+
+        assert created.session.user_id == authenticated.id
+        assert authenticated.session_id is not None
+        assert stored is not None
+        assert stored.hashed_token == f"hash:{FixedSessionTokenGenerator.raw_session_token}"
+        assert stored.hashed_token != created.session_token
+
+    anyio.run(run)
+
+
+def test_revoke_current_session_rejects_future_session_authentication() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        raw_api_key = await create_api_key_for_user(unit_of_work)
+        created = await CreateSessionUseCase(
+            unit_of_work,
+            FixedApiKeyGenerator(),
+            FakeApiKeyHasher(),
+            FixedSessionTokenGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(CreateSessionRequest(api_key=raw_api_key))
+        authenticated = await AuthenticateSessionUseCase(
+            unit_of_work,
+            FixedSessionTokenGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(created.session_token)
+
+        await RevokeCurrentSessionUseCase(unit_of_work).execute(authenticated.session_id)
+
+        with pytest.raises(AuthenticationFailedError):
+            await AuthenticateSessionUseCase(
+                unit_of_work,
+                FixedSessionTokenGenerator(),
+                FakeApiKeyHasher(),
+            ).execute(created.session_token)
 
     anyio.run(run)
 

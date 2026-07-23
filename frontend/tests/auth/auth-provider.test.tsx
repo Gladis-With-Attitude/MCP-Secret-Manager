@@ -55,6 +55,9 @@ function StateProbe() {
       <button onClick={() => void auth.logout()} type="button">
         Logout
       </button>
+      <button onClick={() => void auth.loginWithApiKey("mcp_sm_test")} type="button">
+        Login
+      </button>
     </div>
   );
 }
@@ -133,5 +136,27 @@ describe("AuthProvider", () => {
     expect(clearSpy).toHaveBeenCalled();
     expect(queryClient.getQueryData(["sensitive"])).toBeUndefined();
     expect(screen.getByText("unauthenticated")).toBeInTheDocument();
+  });
+
+  it("exchanges an API key for a backend session", async () => {
+    const user = userEvent.setup();
+    const loginWithApiKey = vi.fn(async () => activeSession);
+
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <AuthProvider
+          initialize={false}
+          sessionClient={{ getCurrentSession: vi.fn(async () => null), loginWithApiKey }}
+        >
+          <StateProbe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Login" }));
+
+    await waitFor(() => expect(loginWithApiKey).toHaveBeenCalledWith("mcp_sm_test"));
+    expect(screen.getByText("authenticated")).toBeInTheDocument();
+    expect(screen.getByText("user@example.test")).toBeInTheDocument();
   });
 });

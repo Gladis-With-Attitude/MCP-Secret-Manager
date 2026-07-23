@@ -69,6 +69,22 @@ class ApiKeyId:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionId:
+    value: UUID
+
+    @classmethod
+    def new(cls) -> SessionId:
+        return cls(uuid4())
+
+    @classmethod
+    def from_string(cls, value: str) -> SessionId:
+        return cls(UUID(value))
+
+    def __str__(self) -> str:
+        return str(self.value)
+
+
+@dataclass(frozen=True, slots=True)
 class UserEmail:
     value: str
 

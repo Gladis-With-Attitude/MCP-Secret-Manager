@@ -76,7 +76,11 @@ class ApiTimeoutError extends ApiBaseError {
 
 class ApiUnauthorizedError extends ApiBaseError {
   constructor(options: Omit<ApiErrorOptions, "kind">) {
-    super({ kind: "unauthorized", userMessage: "Your session is no longer valid.", ...options });
+    super({
+      kind: "unauthorized",
+      ...options,
+      userMessage: options.userMessage ?? "Your session is no longer valid.",
+    });
     this.name = "ApiUnauthorizedError";
   }
 }

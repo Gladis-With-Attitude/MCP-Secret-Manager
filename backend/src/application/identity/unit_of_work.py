@@ -3,7 +3,12 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Protocol
 
-from domain.identity.repositories import ApiKeyRepository, ServiceAccountRepository, UserRepository
+from domain.identity.repositories import (
+    ApiKeyRepository,
+    AuthSessionRepository,
+    ServiceAccountRepository,
+    UserRepository,
+)
 from domain.project.repositories import ProjectRepository
 
 
@@ -22,6 +27,10 @@ class IdentityUnitOfWork(Protocol):
 
     @property
     def api_keys(self) -> ApiKeyRepository:
+        raise NotImplementedError
+
+    @property
+    def auth_sessions(self) -> AuthSessionRepository:
         raise NotImplementedError
 
     async def __aenter__(self) -> IdentityUnitOfWork:

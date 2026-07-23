@@ -17,3 +17,11 @@ class ApiKeySecretGenerator(Protocol):
 
     def extract_prefix(self, api_key: str) -> str | None:
         raise NotImplementedError
+
+
+class SessionTokenGenerator(Protocol):
+    def generate(self) -> str:
+        raise NotImplementedError
+
+    def extract_prefix(self, session_token: str) -> str | None:
+        raise NotImplementedError

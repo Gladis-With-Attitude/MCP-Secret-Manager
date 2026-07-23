@@ -4,7 +4,7 @@ type AuthStatus = "authenticated" | "error" | "expired" | "initializing" | "unau
 
 type AuthErrorKind = "forbidden" | "network" | "session_expired" | "unauthorized" | "unknown";
 
-type AuthMethod = "cookie" | "mfa" | "oauth" | "oidc" | "passkey" | "sso" | "webauthn";
+type AuthMethod = "api_key" | "cookie" | "mfa" | "oauth" | "oidc" | "passkey" | "sso" | "webauthn";
 
 type CurrentUser = {
   avatarUrl?: string | null;
@@ -47,6 +47,7 @@ type AuthExtensionCapabilities = {
 
 type AuthSessionClient = {
   getCurrentSession: () => Promise<Session | null>;
+  loginWithApiKey?: (apiKey: string) => Promise<Session>;
   logout?: () => Promise<void>;
   refreshSession?: () => Promise<Session | null>;
 };

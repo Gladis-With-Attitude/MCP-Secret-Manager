@@ -9,7 +9,7 @@ export {
   isSessionExpired,
   resolveSessionState,
 } from "./session";
-export { defaultAuthCapabilities, defaultSessionClient } from "./session-client";
+export { defaultAuthCapabilities, defaultSessionClient, signInWithApiKey } from "./session-client";
 export type {
   AuthError,
   AuthErrorKind,

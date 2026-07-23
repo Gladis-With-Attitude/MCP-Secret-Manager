@@ -97,3 +97,29 @@ class AuthenticatedIdentityResponse:
     id: str
     type: str
     api_key_id: str
+    session_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CreateSessionRequest:
+    api_key: str
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCreatedResponse:
+    session_token: str
+    session: CurrentSessionResponse
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentSessionResponse:
+    api_key_id: str
+    auth_method: str
+    expires_at: str | None
+    issued_at: str
+    user_id: str
+    user_type: str
+    email: str | None
+    name: str
+    profile_label: str

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from application.audit.dto import AuditContext
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
@@ -10,8 +10,11 @@ from application.identity.dto import (
     AuthenticatedIdentityResponse,
     CreateApiKeyRequest,
     CreateServiceAccountRequest,
+    CreateSessionRequest,
     CreateUserRequest,
+    CurrentSessionResponse,
     ServiceAccountResponse,
+    SessionCreatedResponse,
     UserResponse,
 )
 from application.identity.exceptions import (
@@ -24,19 +27,21 @@ from application.identity.unit_of_work import IdentityUnitOfWork
 from application.observability import log_application_event
 from domain.audit.repositories import AuditRecorder
 from domain.audit.value_objects import AuditResult
-from domain.identity.entities import ApiKey, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
 from domain.identity.exceptions import IdentityDomainError
 from domain.identity.repositories import (
     ApiKeyRepositoryConflictError,
     ServiceAccountRepositoryConflictError,
     UserRepositoryConflictError,
 )
-from domain.identity.services import ApiKeyHasher, ApiKeySecretGenerator
+from domain.identity.services import ApiKeyHasher, ApiKeySecretGenerator, SessionTokenGenerator
 from domain.identity.value_objects import (
+    ApiKeyId,
     ApiKeyOwnerType,
     IdentityStatus,
     ServiceAccountId,
     ServiceAccountName,
+    SessionId,
     UserDisplayName,
     UserEmail,
     UserId,
@@ -365,3 +370,268 @@ class AuthenticateApiKeyUseCase:
         )
 
         return authenticated
+
+
+class CreateSessionUseCase:
+    _SESSION_TTL_SECONDS = 12 * 60 * 60
+
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        api_key_generator: ApiKeySecretGenerator,
+        api_key_hasher: ApiKeyHasher,
+        session_token_generator: SessionTokenGenerator,
+        session_token_hasher: ApiKeyHasher,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._api_key_generator = api_key_generator
+        self._api_key_hasher = api_key_hasher
+        self._session_token_generator = session_token_generator
+        self._session_token_hasher = session_token_hasher
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(self, request: CreateSessionRequest) -> SessionCreatedResponse:
+        raw_api_key = request.api_key.strip()
+        key_prefix = self._api_key_generator.extract_prefix(raw_api_key)
+        if key_prefix is None:
+            await self._record_failure(request.audit_context, "invalid_prefix")
+            raise AuthenticationFailedError("Invalid API key.")
+
+        raw_session_token = self._session_token_generator.generate()
+        token_prefix = self._session_token_generator.extract_prefix(raw_session_token)
+        if token_prefix is None:
+            raise IdentityValidationError("Generated session token prefix is invalid.")
+
+        expires_at = datetime.now(UTC) + timedelta(seconds=self._SESSION_TTL_SECONDS)
+        try:
+            async with self._unit_of_work as unit_of_work:
+                api_key = await self._authenticate_api_key(unit_of_work, raw_api_key, key_prefix)
+                if api_key.expires_at is not None and api_key.expires_at < expires_at:
+                    expires_at = api_key.expires_at
+                auth_session = AuthSession.create(
+                    hashed_token=self._session_token_hasher.hash(raw_session_token),
+                    token_prefix=token_prefix,
+                    api_key_id=api_key.id,
+                    owner_id=api_key.owner_id,
+                    owner_type=api_key.owner_type,
+                    expires_at=expires_at,
+                )
+                created = await unit_of_work.auth_sessions.create(auth_session)
+                current_session = await build_current_session_response(unit_of_work, created)
+                await unit_of_work.commit()
+        except Exception:
+            await self._record_failure(request.audit_context, "invalid_key")
+            raise
+
+        await record_audit_event(
+            self._audit_recorder,
+            AuditContext(
+                actor_id=str(created.owner_id),
+                actor_type=created.owner_type.value,
+                ip_address=request.audit_context.ip_address if request.audit_context else None,
+                user_agent=request.audit_context.user_agent if request.audit_context else None,
+                request_id=request.audit_context.request_id if request.audit_context else None,
+                protocol=request.audit_context.protocol if request.audit_context else "rest",
+            ),
+            action="session.create",
+            resource_type="auth_session",
+            resource_id=str(created.id),
+            result=AuditResult.SUCCESS,
+            metadata={"api_key_id": str(created.api_key_id), "token_prefix": created.token_prefix},
+        )
+
+        return SessionCreatedResponse(session_token=raw_session_token, session=current_session)
+
+    async def _authenticate_api_key(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        raw_api_key: str,
+        key_prefix: str,
+    ) -> ApiKey:
+        api_key = await unit_of_work.api_keys.get_by_prefix(key_prefix)
+        if api_key is None:
+            raise AuthenticationFailedError("Invalid API key.")
+        if not self._api_key_hasher.verify(raw_api_key, api_key.hashed_key):
+            raise AuthenticationFailedError("Invalid API key.")
+        if api_key.is_revoked() or api_key.is_expired(datetime.now(UTC)):
+            raise AuthenticationFailedError("Invalid API key.")
+        await CreateApiKeyUseCase._ensure_active_owner(
+            unit_of_work,
+            api_key.owner_id,
+            api_key.owner_type,
+        )
+        return api_key
+
+    async def _record_failure(self, audit_context: AuditContext | None, reason: str) -> None:
+        log_application_event(
+            logger,
+            event="session_create",
+            result=AuditResult.FAILURE,
+            reason=reason,
+        )
+        await record_audit_event(
+            self._audit_recorder,
+            audit_context,
+            action="session.create",
+            resource_type="auth_session",
+            resource_id=None,
+            result=AuditResult.FAILURE,
+            metadata={"reason": reason},
+        )
+
+
+class AuthenticateSessionUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        session_token_generator: SessionTokenGenerator,
+        session_token_hasher: ApiKeyHasher,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._session_token_generator = session_token_generator
+        self._session_token_hasher = session_token_hasher
+
+    async def execute(self, raw_session_token: str) -> AuthenticatedIdentityResponse:
+        token_prefix = self._session_token_generator.extract_prefix(raw_session_token)
+        if token_prefix is None:
+            raise AuthenticationFailedError("Invalid session.")
+
+        async with self._unit_of_work as unit_of_work:
+            auth_session = await unit_of_work.auth_sessions.get_by_prefix(token_prefix)
+            if auth_session is None:
+                raise AuthenticationFailedError("Invalid session.")
+            if not self._session_token_hasher.verify(
+                raw_session_token,
+                auth_session.hashed_token,
+            ):
+                raise AuthenticationFailedError("Invalid session.")
+            if auth_session.is_revoked() or auth_session.is_expired(datetime.now(UTC)):
+                raise AuthenticationFailedError("Invalid session.")
+            api_key = await unit_of_work.api_keys.get(auth_session.api_key_id)
+            if api_key is None or api_key.is_revoked() or api_key.is_expired(datetime.now(UTC)):
+                raise AuthenticationFailedError("Invalid session.")
+            await CreateApiKeyUseCase._ensure_active_owner(
+                unit_of_work,
+                auth_session.owner_id,
+                auth_session.owner_type,
+            )
+            updated = auth_session.mark_seen()
+            await unit_of_work.auth_sessions.update(updated)
+            await unit_of_work.commit()
+
+        return AuthenticatedIdentityResponse(
+            id=str(auth_session.owner_id),
+            type=auth_session.owner_type.value,
+            api_key_id=str(auth_session.api_key_id),
+            session_id=str(auth_session.id),
+        )
+
+
+class GetCurrentSessionUseCase:
+    def __init__(self, unit_of_work: IdentityUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(
+        self,
+        api_key_id: str,
+        session_id: str | None = None,
+    ) -> CurrentSessionResponse:
+        async with self._unit_of_work as unit_of_work:
+            if session_id is not None:
+                auth_session = await unit_of_work.auth_sessions.get(
+                    SessionId.from_string(session_id)
+                )
+                if auth_session is None or auth_session.is_revoked():
+                    raise AuthenticationFailedError("Invalid session.")
+                return await build_current_session_response(unit_of_work, auth_session)
+
+            api_key = await unit_of_work.api_keys.get(ApiKeyId.from_string(api_key_id))
+            if api_key is None:
+                raise AuthenticationFailedError("Invalid session.")
+            return await build_current_session_response(unit_of_work, api_key)
+
+
+class RevokeCurrentSessionUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(
+        self,
+        session_id: str | None,
+        audit_context: AuditContext | None = None,
+    ) -> None:
+        if session_id is None:
+            return
+
+        async with self._unit_of_work as unit_of_work:
+            auth_session = await unit_of_work.auth_sessions.get(SessionId.from_string(session_id))
+            if auth_session is None:
+                return
+            revoked = auth_session.revoke()
+            await unit_of_work.auth_sessions.update(revoked)
+            await unit_of_work.commit()
+
+        await record_audit_event(
+            self._audit_recorder,
+            AuditContext(
+                actor_id=str(revoked.owner_id),
+                actor_type=revoked.owner_type.value,
+                ip_address=audit_context.ip_address if audit_context else None,
+                user_agent=audit_context.user_agent if audit_context else None,
+                request_id=audit_context.request_id if audit_context else None,
+                protocol=audit_context.protocol if audit_context else "rest",
+            ),
+            action="session.revoke",
+            resource_type="auth_session",
+            resource_id=str(revoked.id),
+            result=AuditResult.SUCCESS,
+            metadata={"api_key_id": str(revoked.api_key_id)},
+        )
+
+
+async def build_current_session_response(
+    unit_of_work: IdentityUnitOfWork,
+    auth: AuthSession | ApiKey,
+) -> CurrentSessionResponse:
+    owner_id = auth.owner_id
+    owner_type = auth.owner_type
+    if owner_type is ApiKeyOwnerType.USER:
+        if not isinstance(owner_id, UserId):
+            raise IdentityValidationError("Session owner id must be a user id.")
+        user = await unit_of_work.users.get(owner_id)
+        if user is None:
+            raise AuthenticationFailedError("Invalid session.")
+        return CurrentSessionResponse(
+            api_key_id=str(auth.api_key_id if isinstance(auth, AuthSession) else auth.id),
+            auth_method="api_key",
+            expires_at=auth.expires_at.isoformat() if auth.expires_at is not None else None,
+            issued_at=auth.created_at.isoformat(),
+            user_id=str(user.id),
+            user_type=owner_type.value,
+            email=user.email.value,
+            name=user.display_name.value,
+            profile_label="User",
+        )
+
+    if not isinstance(owner_id, ServiceAccountId):
+        raise IdentityValidationError("Session owner id must be a service account id.")
+    service_account = await unit_of_work.service_accounts.get(owner_id)
+    if service_account is None:
+        raise AuthenticationFailedError("Invalid session.")
+    return CurrentSessionResponse(
+        api_key_id=str(auth.api_key_id if isinstance(auth, AuthSession) else auth.id),
+        auth_method="api_key",
+        expires_at=auth.expires_at.isoformat() if auth.expires_at is not None else None,
+        issued_at=auth.created_at.isoformat(),
+        user_id=str(service_account.id),
+        user_type=owner_type.value,
+        email=None,
+        name=service_account.name.value,
+        profile_label="Service account",
+    )

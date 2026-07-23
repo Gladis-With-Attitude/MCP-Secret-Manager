@@ -116,6 +116,35 @@ function AuthProvider({
     }
   }, [clearSensitiveState, onAuthError, sessionClient, setSession]);
 
+  const loginWithApiKey = useCallback(
+    async (apiKey: string) => {
+      if (!sessionClient.loginWithApiKey) {
+        const authError = normalizeAuthError(new Error("API key login is not configured."));
+        setState(createAuthErrorState(authError));
+        onAuthError?.(authError);
+        return;
+      }
+
+      setState((currentState) => ({
+        ...currentState,
+        error: null,
+        status: "initializing",
+      }));
+
+      try {
+        const session = await sessionClient.loginWithApiKey(apiKey);
+        await setSession(session);
+      } catch (error) {
+        const authError = normalizeAuthError(error);
+        await clearSensitiveState();
+        setState(createAuthErrorState(authError));
+        onAuthError?.(authError);
+        throw authError;
+      }
+    },
+    [clearSensitiveState, onAuthError, sessionClient, setSession],
+  );
+
   const logout = useCallback(async () => {
     let logoutError: AuthError | null = null;
 
@@ -148,6 +177,7 @@ function AuthProvider({
       isAuthenticated: state.status === "authenticated",
       isExpired: state.status === "expired",
       isLoading: state.status === "initializing",
+      loginWithApiKey,
       logout,
       refreshSession,
       session: state.session,
@@ -160,6 +190,7 @@ function AuthProvider({
     [
       clearSession,
       expireSession,
+      loginWithApiKey,
       logout,
       mergedCapabilities,
       refreshSession,

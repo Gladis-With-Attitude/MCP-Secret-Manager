@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from application.audit.dto import AuditEventResponse
 from application.identity.dto import (
     ApiKeyCreatedResponse,
+    CurrentSessionResponse,
     ServiceAccountResponse,
     UserResponse,
 )
@@ -409,6 +410,12 @@ class CreateApiKeyHttpRequest(BaseModel):
     expires_at: str | None = None
 
 
+class CreateSessionHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    api_key: str
+
+
 class ApiKeyCreatedHttpResponse(BaseModel):
     id: str
     api_key: str
@@ -428,6 +435,38 @@ class ApiKeyCreatedHttpResponse(BaseModel):
             owner_type=response.owner_type,
             expires_at=response.expires_at,
             created_at=response.created_at,
+        )
+
+
+class CurrentSessionUserHttpResponse(BaseModel):
+    id: str
+    type: str
+    email: str | None
+    name: str
+    profile_label: str
+
+
+class CurrentSessionHttpResponse(BaseModel):
+    api_key_id: str
+    auth_method: str
+    expires_at: str | None
+    issued_at: str
+    user: CurrentSessionUserHttpResponse
+
+    @classmethod
+    def from_application(cls, response: CurrentSessionResponse) -> CurrentSessionHttpResponse:
+        return cls(
+            api_key_id=response.api_key_id,
+            auth_method=response.auth_method,
+            expires_at=response.expires_at,
+            issued_at=response.issued_at,
+            user=CurrentSessionUserHttpResponse(
+                id=response.user_id,
+                type=response.user_type,
+                email=response.email,
+                name=response.name,
+                profile_label=response.profile_label,
+            ),
         )
 
 
