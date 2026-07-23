@@ -4,9 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from domain.identity.entities import ApiKey, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
 from domain.identity.repositories import (
     ApiKeyRepositoryConflictError,
+    AuthSessionRepositoryConflictError,
     ServiceAccountRepositoryConflictError,
     UserRepositoryConflictError,
 )
@@ -14,12 +15,14 @@ from domain.identity.value_objects import (
     ApiKeyId,
     ServiceAccountId,
     ServiceAccountName,
+    SessionId,
     UserEmail,
     UserId,
 )
 from domain.project.value_objects import ProjectId
 from infrastructure.persistence.identity_models import (
     ApiKeyModel,
+    AuthSessionModel,
     ServiceAccountModel,
     UserModel,
 )
@@ -109,4 +112,51 @@ class SqlAlchemyApiKeyRepository:
         )
         if model is None:
             return None
+        return model.to_domain()
+
+
+class SqlAlchemyAuthSessionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, auth_session: AuthSession) -> AuthSession:
+        model = AuthSessionModel.from_domain(auth_session)
+        self._session.add(model)
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise AuthSessionRepositoryConflictError("AuthSession persistence conflict.") from exc
+        return model.to_domain()
+
+    async def get(self, session_id: SessionId) -> AuthSession | None:
+        model = await self._session.get(AuthSessionModel, session_id.value)
+        if model is None:
+            return None
+        return model.to_domain()
+
+    async def get_by_prefix(self, token_prefix: str) -> AuthSession | None:
+        model = await self._session.scalar(
+            select(AuthSessionModel).where(AuthSessionModel.token_prefix == token_prefix)
+        )
+        if model is None:
+            return None
+        return model.to_domain()
+
+    async def update(self, auth_session: AuthSession) -> AuthSession:
+        model = await self._session.get(AuthSessionModel, auth_session.id.value)
+        if model is None:
+            raise AuthSessionRepositoryConflictError("AuthSession was not found.")
+        model.hashed_token = auth_session.hashed_token
+        model.token_prefix = auth_session.token_prefix
+        model.api_key_id = auth_session.api_key_id.value
+        model.owner_id = auth_session.owner_id.value
+        model.owner_type = auth_session.owner_type.value
+        model.expires_at = auth_session.expires_at
+        model.revoked_at = auth_session.revoked_at
+        model.created_at = auth_session.created_at
+        model.last_seen_at = auth_session.last_seen_at
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise AuthSessionRepositoryConflictError("AuthSession persistence conflict.") from exc
         return model.to_domain()

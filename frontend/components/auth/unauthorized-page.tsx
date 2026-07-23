@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import type { ReactNode } from "react";
 
+import { buttonVariants } from "@/components/buttons/button";
 import { ErrorState } from "@/components/feedback/error-state";
 import { Container } from "@/components/layout/container";
 import { Page } from "@/components/layout/page";
@@ -11,7 +14,11 @@ type UnauthorizedPageProps = {
 };
 
 function UnauthorizedPage({
-  action,
+  action = (
+    <Link className={buttonVariants()} href="/">
+      Sign in
+    </Link>
+  ),
   description = "A valid session is required to access this page.",
   title = "Authentication required",
 }: UnauthorizedPageProps) {

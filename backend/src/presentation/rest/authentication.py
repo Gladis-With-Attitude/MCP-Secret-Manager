@@ -11,8 +11,10 @@ from starlette.types import ASGIApp
 from application.audit.dto import AuditContext
 from application.identity.dto import AuthenticatedIdentityResponse
 from application.identity.exceptions import AuthenticationFailedError
-from application.identity.use_cases import AuthenticateApiKeyUseCase
+from application.identity.use_cases import AuthenticateApiKeyUseCase, AuthenticateSessionUseCase
 from presentation.rest.observability import get_or_create_request_id
+
+SESSION_COOKIE_NAME = "mcp_sm_session"
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,13 +22,19 @@ class AuthenticatedIdentity:
     id: str
     type: str
     api_key_id: str
+    session_id: str | None = None
 
     @classmethod
     def from_application(
         cls,
         response: AuthenticatedIdentityResponse,
     ) -> AuthenticatedIdentity:
-        return cls(id=response.id, type=response.type, api_key_id=response.api_key_id)
+        return cls(
+            id=response.id,
+            type=response.type,
+            api_key_id=response.api_key_id,
+            session_id=response.session_id,
+        )
 
 
 class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
@@ -34,9 +42,11 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
         self,
         app: ASGIApp,
         authenticate_api_key_use_case: AuthenticateApiKeyUseCase | None = None,
+        authenticate_session_use_case: AuthenticateSessionUseCase | None = None,
     ) -> None:
         super().__init__(app)
         self._authenticate_api_key_use_case = authenticate_api_key_use_case
+        self._authenticate_session_use_case = authenticate_session_use_case
 
     async def dispatch(
         self,
@@ -47,6 +57,24 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
         request_id = get_or_create_request_id(request)
         authorization = request.headers.get("Authorization")
         if authorization is None:
+            session_token = request.cookies.get(SESSION_COOKIE_NAME)
+            if session_token is None:
+                return await call_next(request)
+            if self._authenticate_session_use_case is None:
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={"detail": "Authentication is not configured."},
+                )
+            try:
+                authenticated = await self._authenticate_session_use_case.execute(session_token)
+            except AuthenticationFailedError:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Invalid authentication credentials."},
+                )
+            request.state.authenticated_identity = AuthenticatedIdentity.from_application(
+                authenticated
+            )
             return await call_next(request)
 
         if not authorization.startswith("Bearer "):

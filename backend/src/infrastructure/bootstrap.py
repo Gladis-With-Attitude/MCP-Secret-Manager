@@ -14,9 +14,13 @@ from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecre
 from application.health import HealthStatus
 from application.identity.use_cases import (
     AuthenticateApiKeyUseCase,
+    AuthenticateSessionUseCase,
     CreateApiKeyUseCase,
     CreateServiceAccountUseCase,
+    CreateSessionUseCase,
     CreateUserUseCase,
+    GetCurrentSessionUseCase,
+    RevokeCurrentSessionUseCase,
 )
 from application.project.use_cases import (
     ArchiveProjectUseCase,
@@ -55,7 +59,11 @@ from infrastructure.config import (
     log_safe_runtime_configuration,
 )
 from infrastructure.crypto import AesGcmCryptoProvider
-from infrastructure.identity import Argon2idApiKeyHasher, SecureApiKeySecretGenerator
+from infrastructure.identity import (
+    Argon2idApiKeyHasher,
+    SecureApiKeySecretGenerator,
+    SecureSessionTokenGenerator,
+)
 from infrastructure.logging import configure_runtime_logging
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -73,8 +81,10 @@ from presentation.rest.dependencies import (
     get_create_secret_use_case,
     get_create_secret_version_use_case,
     get_create_service_account_use_case,
+    get_create_session_use_case,
     get_create_user_use_case,
     get_create_vault_use_case,
+    get_current_session_use_case,
     get_list_audit_events_use_case,
     get_list_projects_use_case,
     get_list_secret_versions_use_case,
@@ -82,6 +92,7 @@ from presentation.rest.dependencies import (
     get_list_vaults_use_case,
     get_project_use_case,
     get_restore_secret_version_use_case,
+    get_revoke_current_session_use_case,
     get_secret_use_case,
     get_secret_version_metadata_use_case,
     get_update_project_use_case,
@@ -182,6 +193,8 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     use_cases_initialized = session_factory is not None
     api_key_generator = SecureApiKeySecretGenerator()
     api_key_hasher = Argon2idApiKeyHasher()
+    session_token_generator = SecureSessionTokenGenerator()
+    session_token_hasher = Argon2idApiKeyHasher()
     audit_recorder = (
         PersistentAuditRecorder(SqlAlchemyUnitOfWork(session_factory))
         if session_factory is not None
@@ -193,6 +206,15 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
             api_key_generator,
             api_key_hasher,
             audit_recorder=audit_recorder,
+        )
+        if session_factory is not None
+        else None
+    )
+    authenticate_session_use_case = (
+        AuthenticateSessionUseCase(
+            SqlAlchemyUnitOfWork(session_factory),
+            session_token_generator,
+            session_token_hasher,
         )
         if session_factory is not None
         else None
@@ -229,6 +251,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         openapi_enabled=resolved_settings.openapi_enabled,
         lifespan=lifespan,
         authenticate_api_key_use_case=authenticate_api_key_use_case,
+        authenticate_session_use_case=authenticate_session_use_case,
         health_check=health_check,
     )
 
@@ -276,6 +299,25 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 SqlAlchemyUnitOfWork(session_factory),
                 api_key_generator,
                 api_key_hasher,
+                audit_recorder=audit_recorder,
+            )
+
+        def create_session_use_case() -> CreateSessionUseCase:
+            return CreateSessionUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                api_key_generator,
+                api_key_hasher,
+                session_token_generator,
+                session_token_hasher,
+                audit_recorder=audit_recorder,
+            )
+
+        def current_session_use_case() -> GetCurrentSessionUseCase:
+            return GetCurrentSessionUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def revoke_current_session_use_case() -> RevokeCurrentSessionUseCase:
+            return RevokeCurrentSessionUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
                 audit_recorder=audit_recorder,
             )
 
@@ -387,6 +429,11 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
             create_service_account_use_case
         )
         app.dependency_overrides[get_create_api_key_use_case] = create_api_key_use_case
+        app.dependency_overrides[get_create_session_use_case] = create_session_use_case
+        app.dependency_overrides[get_current_session_use_case] = current_session_use_case
+        app.dependency_overrides[get_revoke_current_session_use_case] = (
+            revoke_current_session_use_case
+        )
         app.dependency_overrides[get_authorize_use_case] = authorize_use_case
         app.dependency_overrides[get_list_audit_events_use_case] = list_audit_events_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case

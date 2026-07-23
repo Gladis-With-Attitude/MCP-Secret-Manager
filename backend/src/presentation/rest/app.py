@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.types import Lifespan
 
 from application.health import HealthStatus, get_liveness_status
-from application.identity.use_cases import AuthenticateApiKeyUseCase
+from application.identity.use_cases import AuthenticateApiKeyUseCase, AuthenticateSessionUseCase
 from presentation.rest.audit import router as audit_router
 from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
 from presentation.rest.identity import router as identity_router
@@ -23,6 +23,7 @@ def create_app(
     openapi_enabled: bool = True,
     lifespan: Lifespan[FastAPI] | None = None,
     authenticate_api_key_use_case: AuthenticateApiKeyUseCase | None = None,
+    authenticate_session_use_case: AuthenticateSessionUseCase | None = None,
     health_check: Callable[[], Awaitable[HealthStatus]] | None = None,
 ) -> FastAPI:
     docs_url = "/docs" if openapi_enabled else None
@@ -68,6 +69,7 @@ def create_app(
     app.add_middleware(
         ApiKeyAuthenticationMiddleware,
         authenticate_api_key_use_case=authenticate_api_key_use_case,
+        authenticate_session_use_case=authenticate_session_use_case,
     )
     app.add_middleware(RequestObservabilityMiddleware, metrics=metrics)
 

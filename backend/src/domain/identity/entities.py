@@ -9,6 +9,7 @@ from domain.identity.value_objects import (
     IdentityStatus,
     ServiceAccountId,
     ServiceAccountName,
+    SessionId,
     UserDisplayName,
     UserEmail,
     UserId,
@@ -116,6 +117,85 @@ class ApiKey:
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ApiKey):
+            return NotImplemented
+        return self.id == other.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class AuthSession:
+    id: SessionId
+    hashed_token: str
+    token_prefix: str
+    api_key_id: ApiKeyId
+    owner_id: UserId | ServiceAccountId
+    owner_type: ApiKeyOwnerType
+    expires_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+    last_seen_at: datetime | None
+
+    @classmethod
+    def create(
+        cls,
+        hashed_token: str,
+        token_prefix: str,
+        api_key_id: ApiKeyId,
+        owner_id: UserId | ServiceAccountId,
+        owner_type: ApiKeyOwnerType,
+        expires_at: datetime | None,
+    ) -> AuthSession:
+        return cls(
+            id=SessionId.new(),
+            hashed_token=hashed_token,
+            token_prefix=token_prefix,
+            api_key_id=api_key_id,
+            owner_id=owner_id,
+            owner_type=owner_type,
+            expires_at=expires_at,
+            revoked_at=None,
+            created_at=datetime.now(UTC),
+            last_seen_at=None,
+        )
+
+    def is_revoked(self) -> bool:
+        return self.revoked_at is not None
+
+    def is_expired(self, now: datetime) -> bool:
+        return self.expires_at is not None and self.expires_at <= now
+
+    def revoke(self, now: datetime | None = None) -> AuthSession:
+        return AuthSession(
+            id=self.id,
+            hashed_token=self.hashed_token,
+            token_prefix=self.token_prefix,
+            api_key_id=self.api_key_id,
+            owner_id=self.owner_id,
+            owner_type=self.owner_type,
+            expires_at=self.expires_at,
+            revoked_at=now or datetime.now(UTC),
+            created_at=self.created_at,
+            last_seen_at=self.last_seen_at,
+        )
+
+    def mark_seen(self, now: datetime | None = None) -> AuthSession:
+        return AuthSession(
+            id=self.id,
+            hashed_token=self.hashed_token,
+            token_prefix=self.token_prefix,
+            api_key_id=self.api_key_id,
+            owner_id=self.owner_id,
+            owner_type=self.owner_type,
+            expires_at=self.expires_at,
+            revoked_at=self.revoked_at,
+            created_at=self.created_at,
+            last_seen_at=now or datetime.now(UTC),
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AuthSession):
             return NotImplemented
         return self.id == other.id
 

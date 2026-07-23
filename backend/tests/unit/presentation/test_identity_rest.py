@@ -13,8 +13,11 @@ from application.identity.dto import (
     AuthenticatedIdentityResponse,
     CreateApiKeyRequest,
     CreateServiceAccountRequest,
+    CreateSessionRequest,
     CreateUserRequest,
+    CurrentSessionResponse,
     ServiceAccountResponse,
+    SessionCreatedResponse,
     UserResponse,
 )
 from application.identity.exceptions import AuthenticationFailedError
@@ -24,7 +27,9 @@ from presentation.rest.authentication import AuthenticatedIdentity, get_authenti
 from presentation.rest.dependencies import (
     get_create_api_key_use_case,
     get_create_service_account_use_case,
+    get_create_session_use_case,
     get_create_user_use_case,
+    get_current_session_use_case,
 )
 
 
@@ -80,8 +85,58 @@ class FakeAuthenticateApiKeyUseCase:
         )
 
 
+class FakeGetCurrentSessionUseCase:
+    async def execute(
+        self, api_key_id: str, session_id: str | None = None
+    ) -> CurrentSessionResponse:
+        _ = session_id
+        return CurrentSessionResponse(
+            api_key_id=api_key_id,
+            auth_method="api_key",
+            expires_at=None,
+            issued_at="2026-07-21T12:00:00+00:00",
+            user_id="a6ef559c-b860-4028-a050-bb7bd2244916",
+            user_type="user",
+            email="user@example.test",
+            name="Ada Lovelace",
+            profile_label="User",
+        )
+
+
+FAKE_BROWSER_SESSION_VALUE = (
+    "mcp_sm_session_0123456789abcdef_"
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+)
+
+
+class FakeCreateSessionUseCase:
+    async def execute(self, request: CreateSessionRequest) -> SessionCreatedResponse:
+        if request.api_key != "valid-api-key":
+            raise AuthenticationFailedError("Invalid API key.")
+        return SessionCreatedResponse(
+            session_token=FAKE_BROWSER_SESSION_VALUE,
+            session=CurrentSessionResponse(
+                api_key_id="71a35966-aa7e-48af-815a-77796de636af",
+                auth_method="api_key",
+                expires_at=None,
+                issued_at="2026-07-21T12:00:00+00:00",
+                user_id="a6ef559c-b860-4028-a050-bb7bd2244916",
+                user_type="user",
+                email="user@example.test",
+                name="Ada Lovelace",
+                profile_label="User",
+            ),
+        )
+
+
 async def build_identity_app() -> FastAPI:
-    app = create_app(service_name="test-service")
+    app = create_app(
+        service_name="test-service",
+        authenticate_api_key_use_case=cast(
+            AuthenticateApiKeyUseCase,
+            FakeAuthenticateApiKeyUseCase(),
+        ),
+    )
 
     async def create_user_dependency() -> AsyncIterator[FakeCreateUserUseCase]:
         yield FakeCreateUserUseCase()
@@ -92,11 +147,19 @@ async def build_identity_app() -> FastAPI:
     async def create_api_key_dependency() -> AsyncIterator[FakeCreateApiKeyUseCase]:
         yield FakeCreateApiKeyUseCase()
 
+    async def create_session_dependency() -> AsyncIterator[FakeCreateSessionUseCase]:
+        yield FakeCreateSessionUseCase()
+
+    async def current_session_dependency() -> AsyncIterator[FakeGetCurrentSessionUseCase]:
+        yield FakeGetCurrentSessionUseCase()
+
     app.dependency_overrides[get_create_user_use_case] = create_user_dependency
     app.dependency_overrides[get_create_service_account_use_case] = (
         create_service_account_dependency
     )
     app.dependency_overrides[get_create_api_key_use_case] = create_api_key_dependency
+    app.dependency_overrides[get_create_session_use_case] = create_session_dependency
+    app.dependency_overrides[get_current_session_use_case] = current_session_dependency
     return app
 
 
@@ -159,6 +222,68 @@ def test_create_api_key_endpoint_returns_full_key_once() -> None:
         assert payload["api_key"].startswith("mcp_sm_0123456789abcdef_")
         assert payload["key_prefix"] == "mcp_sm_0123456789abcdef"
         assert "hashed_key" not in payload
+
+    anyio.run(run)
+
+
+def test_current_session_endpoint_returns_authenticated_session() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get(
+                "/v1/auth/session",
+                headers={"Authorization": "Bearer valid-api-key"},
+            )
+
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["auth_method"] == "api_key"
+        assert payload["api_key_id"] == "71a35966-aa7e-48af-815a-77796de636af"
+        assert payload["user"] == {
+            "id": "a6ef559c-b860-4028-a050-bb7bd2244916",
+            "type": "user",
+            "email": "user@example.test",
+            "name": "Ada Lovelace",
+            "profile_label": "User",
+        }
+
+    anyio.run(run)
+
+
+def test_current_session_endpoint_requires_valid_authentication() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            missing = await client.get("/v1/auth/session")
+            invalid = await client.get(
+                "/v1/auth/session",
+                headers={"Authorization": "Bearer invalid-api-key"},
+            )
+
+        assert missing.status_code == 401
+        assert invalid.status_code == 401
+
+    anyio.run(run)
+
+
+def test_create_session_endpoint_sets_http_only_cookie() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.post("/v1/auth/session", json={"api_key": "valid-api-key"})
+
+        assert response.status_code == 201
+        assert response.json()["user"]["name"] == "Ada Lovelace"
+        cookie = response.headers["set-cookie"]
+        assert "mcp_sm_session=" in cookie
+        assert "HttpOnly" in cookie
+        assert "valid-api-key" not in cookie
 
     anyio.run(run)
 

@@ -19,6 +19,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isExpired: boolean;
   isLoading: boolean;
+  loginWithApiKey: (apiKey: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   session: Session | null;

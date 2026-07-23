@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from domain.identity.entities import ApiKey, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
 from domain.identity.value_objects import (
     ApiKeyId,
     ServiceAccountId,
     ServiceAccountName,
+    SessionId,
     UserEmail,
     UserId,
 )
@@ -23,6 +24,10 @@ class ServiceAccountRepositoryConflictError(RuntimeError):
 
 class ApiKeyRepositoryConflictError(RuntimeError):
     """Raised when persistence detects an ApiKey constraint conflict."""
+
+
+class AuthSessionRepositoryConflictError(RuntimeError):
+    """Raised when persistence detects an AuthSession constraint conflict."""
 
 
 class UserRepository(Protocol):
@@ -55,4 +60,18 @@ class ApiKeyRepository(Protocol):
         raise NotImplementedError
 
     async def get_by_prefix(self, key_prefix: str) -> ApiKey | None:
+        raise NotImplementedError
+
+
+class AuthSessionRepository(Protocol):
+    async def create(self, session: AuthSession) -> AuthSession:
+        raise NotImplementedError
+
+    async def get(self, session_id: SessionId) -> AuthSession | None:
+        raise NotImplementedError
+
+    async def get_by_prefix(self, token_prefix: str) -> AuthSession | None:
+        raise NotImplementedError
+
+    async def update(self, session: AuthSession) -> AuthSession:
         raise NotImplementedError

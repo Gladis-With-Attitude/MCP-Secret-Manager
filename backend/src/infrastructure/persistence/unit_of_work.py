@@ -6,7 +6,12 @@ from typing import Self
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from domain.audit.repositories import AuditRepository
-from domain.identity.repositories import ApiKeyRepository, ServiceAccountRepository, UserRepository
+from domain.identity.repositories import (
+    ApiKeyRepository,
+    AuthSessionRepository,
+    ServiceAccountRepository,
+    UserRepository,
+)
 from domain.project.repositories import ProjectRepository
 from domain.rbac.repositories import PermissionRepository, RoleAssignmentRepository, RoleRepository
 from domain.secret.repositories import SecretRepository
@@ -15,6 +20,7 @@ from domain.vault.repositories import VaultRepository
 from infrastructure.persistence.audit_repository import SqlAlchemyAuditRepository
 from infrastructure.persistence.identity_repositories import (
     SqlAlchemyApiKeyRepository,
+    SqlAlchemyAuthSessionRepository,
     SqlAlchemyServiceAccountRepository,
     SqlAlchemyUserRepository,
 )
@@ -40,6 +46,7 @@ class SqlAlchemyUnitOfWork:
         self._users: SqlAlchemyUserRepository | None = None
         self._service_accounts: SqlAlchemyServiceAccountRepository | None = None
         self._api_keys: SqlAlchemyApiKeyRepository | None = None
+        self._auth_sessions: SqlAlchemyAuthSessionRepository | None = None
         self._permissions: SqlAlchemyPermissionRepository | None = None
         self._roles: SqlAlchemyRoleRepository | None = None
         self._role_assignments: SqlAlchemyRoleAssignmentRepository | None = None
@@ -88,6 +95,12 @@ class SqlAlchemyUnitOfWork:
         return self._api_keys
 
     @property
+    def auth_sessions(self) -> AuthSessionRepository:
+        if self._auth_sessions is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._auth_sessions
+
+    @property
     def permissions(self) -> PermissionRepository:
         if self._permissions is None:
             raise RuntimeError("Unit of Work has not been entered.")
@@ -120,6 +133,7 @@ class SqlAlchemyUnitOfWork:
         self._users = SqlAlchemyUserRepository(self._session)
         self._service_accounts = SqlAlchemyServiceAccountRepository(self._session)
         self._api_keys = SqlAlchemyApiKeyRepository(self._session)
+        self._auth_sessions = SqlAlchemyAuthSessionRepository(self._session)
         self._permissions = SqlAlchemyPermissionRepository(self._session)
         self._roles = SqlAlchemyRoleRepository(self._session)
         self._role_assignments = SqlAlchemyRoleAssignmentRepository(self._session)
@@ -156,6 +170,7 @@ class SqlAlchemyUnitOfWork:
         self._users = None
         self._service_accounts = None
         self._api_keys = None
+        self._auth_sessions = None
         self._permissions = None
         self._roles = None
         self._role_assignments = None
