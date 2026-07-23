@@ -54,6 +54,7 @@ from infrastructure.config import (
 )
 from infrastructure.crypto import AesGcmCryptoProvider
 from infrastructure.identity import Argon2idApiKeyHasher, SecureApiKeySecretGenerator
+from infrastructure.logging import configure_runtime_logging
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from presentation.mcp.server import McpServer
@@ -160,7 +161,10 @@ async def verify_database_connection(engine: AsyncEngine | None) -> None:
 
 def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
-    logging.basicConfig(level=getattr(logging, resolved_settings.log_level))
+    configure_runtime_logging(
+        resolved_settings.log_level,
+        json_enabled=resolved_settings.log_json,
+    )
     resolved_settings.validate_runtime()
     log_safe_runtime_configuration(resolved_settings)
     logger.info("✓ Configuration chargée")

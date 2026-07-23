@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.types import Lifespan
 
 from application.health import HealthStatus, get_liveness_status
@@ -12,6 +12,7 @@ from application.identity.use_cases import AuthenticateApiKeyUseCase
 from presentation.rest.audit import router as audit_router
 from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
 from presentation.rest.identity import router as identity_router
+from presentation.rest.observability import InMemoryHttpMetrics, RequestObservabilityMiddleware
 from presentation.rest.projects import router as projects_router
 from presentation.rest.secrets import router as secrets_router
 from presentation.rest.vaults import router as vaults_router
@@ -52,6 +53,13 @@ def create_app(
         )
         return status.as_public_dict()
 
+    metrics = InMemoryHttpMetrics()
+    app.state.metrics = metrics
+
+    @app.get("/v1/metrics", tags=["observability"], response_class=PlainTextResponse)
+    async def metrics_endpoint() -> str:
+        return metrics.render_prometheus()
+
     app.include_router(vaults_router)
     app.include_router(projects_router)
     app.include_router(secrets_router)
@@ -61,6 +69,7 @@ def create_app(
         ApiKeyAuthenticationMiddleware,
         authenticate_api_key_use_case=authenticate_api_key_use_case,
     )
+    app.add_middleware(RequestObservabilityMiddleware, metrics=metrics)
 
     return app
 

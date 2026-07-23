@@ -48,3 +48,15 @@ missing or unsafe variable.
 
 Safe configuration logs include only non-sensitive metadata such as environment,
 port, enabled flags and whether sensitive values are configured.
+
+## Observability
+
+Set `MCP_SECRET_MANAGER_LOG_JSON=true` in containerized or production-like
+deployments when logs are collected by a structured log pipeline. Logs include
+request ids and safe HTTP metadata, but never request bodies, authorization
+headers, raw API keys or secret values.
+
+The REST API exposes `GET /v1/metrics` with lightweight Prometheus-compatible
+process-local HTTP request counters and duration totals. Full Prometheus
+scraping, Grafana dashboards and OpenTelemetry tracing remain separate D1
+follow-up work.

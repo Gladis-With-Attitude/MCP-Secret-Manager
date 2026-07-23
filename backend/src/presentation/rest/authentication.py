@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Annotated
-from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request, status
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -13,6 +12,7 @@ from application.audit.dto import AuditContext
 from application.identity.dto import AuthenticatedIdentityResponse
 from application.identity.exceptions import AuthenticationFailedError
 from application.identity.use_cases import AuthenticateApiKeyUseCase
+from presentation.rest.observability import get_or_create_request_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +44,7 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
         call_next: RequestResponseEndpoint,
     ) -> Response:
         request.state.authenticated_identity = None
-        request.state.request_id = request.headers.get("X-Request-ID") or str(uuid4())
+        request_id = get_or_create_request_id(request)
         authorization = request.headers.get("Authorization")
         if authorization is None:
             return await call_next(request)
@@ -67,7 +67,7 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
             actor_type="anonymous",
             ip_address=client_host,
             user_agent=request.headers.get("User-Agent"),
-            request_id=request.state.request_id,
+            request_id=request_id,
         )
         try:
             authenticated = await self._authenticate_api_key_use_case.execute(

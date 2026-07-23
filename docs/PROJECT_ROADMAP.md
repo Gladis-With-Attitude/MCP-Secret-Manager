@@ -116,12 +116,16 @@ Objective: transform the MVP into a production-ready product.
 
 ### D1 - Observability
 
-- Structured logging
-- Request IDs
-- Metrics
-- Prometheus
-- Grafana
-- OpenTelemetry
+| Slice | Status | Scope |
+| --- | --- | --- |
+| D1a | ✅ | REST request IDs, safe structured logging helpers, HTTP request logs and lightweight Prometheus-compatible request metrics |
+| D1b | ⏳ | Expanded application/service logs for high-value use cases |
+| D1c | ⏳ | Prometheus deployment integration and Grafana dashboards |
+| D1d | ⏳ | OpenTelemetry traces and cross-service correlation |
+
+D1a intentionally keeps the foundation small: logs and metrics include request
+metadata such as method, route template, status, duration and request id, but do
+not include request bodies, authorization headers, API keys or secret values.
 
 ### D2 - Security Hardening
 
