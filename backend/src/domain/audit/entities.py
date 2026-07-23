@@ -12,7 +12,7 @@ from domain.audit.value_objects import (
     AuditResult,
 )
 
-type JsonValue = str | int | float | bool | None | Mapping[str, JsonValue] | Sequence[JsonValue]
+type JsonValue = str | int | float | bool | Mapping[str, JsonValue] | Sequence[JsonValue] | None
 type AuditMetadata = Mapping[str, JsonValue]
 
 
