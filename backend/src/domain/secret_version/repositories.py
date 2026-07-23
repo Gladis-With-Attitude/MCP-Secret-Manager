@@ -27,3 +27,6 @@ class SecretVersionRepository(Protocol):
 
     async def deactivate_previous_versions(self, secret_id: SecretId) -> None:
         raise NotImplementedError
+
+    async def activate(self, secret_version_id: SecretVersionId) -> SecretVersion:
+        raise NotImplementedError

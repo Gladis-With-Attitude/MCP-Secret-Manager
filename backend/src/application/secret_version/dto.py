@@ -16,6 +16,14 @@ class CreateSecretVersionRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class RestoreSecretVersionRequest:
+    secret_id: str
+    version_id: str
+    project_id: str | None = None
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SecretVersionResponse:
     id: str
     secret_id: str

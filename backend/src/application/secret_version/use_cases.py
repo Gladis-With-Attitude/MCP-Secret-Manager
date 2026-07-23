@@ -9,6 +9,7 @@ from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecre
 from application.observability import log_application_event
 from application.secret_version.dto import (
     CreateSecretVersionRequest,
+    RestoreSecretVersionRequest,
     SecretVersionMetadataResponse,
     SecretVersionResponse,
 )
@@ -30,7 +31,7 @@ from domain.secret.value_objects import SecretId
 from domain.secret_version.entities import SecretVersion
 from domain.secret_version.exceptions import SecretVersionDomainError
 from domain.secret_version.repositories import SecretVersionRepositoryConflictError
-from domain.secret_version.value_objects import SecretValue, SecretVersionNumber
+from domain.secret_version.value_objects import SecretValue, SecretVersionId, SecretVersionNumber
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,13 @@ class CreateSecretVersionUseCase:
             raise SecretVersionValidationError(str(exc)) from exc
 
     @staticmethod
+    def _validate_secret_version_id(raw_version_id: str) -> SecretVersionId:
+        try:
+            return SecretVersionId.from_string(raw_version_id)
+        except ValueError as exc:
+            raise SecretVersionValidationError("Secret version id must be a valid UUID.") from exc
+
+    @staticmethod
     def _validate_project_id(raw_project_id: str) -> ProjectId:
         try:
             return ProjectId.from_string(raw_project_id)
@@ -162,6 +170,14 @@ class CreateSecretVersionUseCase:
         project_id = CreateSecretVersionUseCase._validate_project_id(raw_project_id)
         if secret.project_id != project_id:
             raise SecretNotFoundError("Secret not found.")
+
+    @staticmethod
+    def _ensure_version_belongs_to_secret(
+        secret_version: SecretVersion,
+        secret_id: SecretId,
+    ) -> None:
+        if secret_version.secret_id != secret_id:
+            raise SecretVersionNotFoundError("Secret version not found.")
 
 
 class ListSecretVersionsUseCase:
@@ -228,6 +244,169 @@ class ListSecretVersionsUseCase:
             metadata={"versions_returned": len(response)},
         )
         return response
+
+
+class GetSecretVersionMetadataUseCase:
+    def __init__(
+        self,
+        unit_of_work: UnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(
+        self,
+        secret_id: str,
+        version_id: str,
+        audit_context: AuditContext | None = None,
+        project_id: str | None = None,
+    ) -> SecretVersionMetadataResponse:
+        try:
+            validated_secret_id = CreateSecretVersionUseCase._validate_secret_id(secret_id)
+            validated_version_id = CreateSecretVersionUseCase._validate_secret_version_id(
+                version_id
+            )
+
+            async with self._unit_of_work as unit_of_work:
+                secret = await unit_of_work.secrets.get(validated_secret_id)
+                if secret is None:
+                    raise SecretNotFoundError("Secret not found.")
+                CreateSecretVersionUseCase._ensure_secret_belongs_to_project(secret, project_id)
+
+                secret_version = await unit_of_work.secret_versions.get(validated_version_id)
+                if secret_version is None:
+                    raise SecretVersionNotFoundError("Secret version not found.")
+                CreateSecretVersionUseCase._ensure_version_belongs_to_secret(
+                    secret_version,
+                    validated_secret_id,
+                )
+        except Exception:
+            log_application_event(
+                logger,
+                event="secret_version_get",
+                result=AuditResult.FAILURE,
+                resource_id=secret_id,
+                version_id=version_id,
+                project_id=project_id,
+            )
+            await record_audit_event(
+                self._audit_recorder,
+                audit_context,
+                action="secret.read",
+                resource_type="secret",
+                resource_id=secret_id,
+                result=AuditResult.FAILURE,
+                metadata={"version_id": version_id},
+            )
+            raise
+
+        log_application_event(
+            logger,
+            event="secret_version_get",
+            result=AuditResult.SUCCESS,
+            resource_id=str(validated_secret_id),
+            version_id=str(secret_version.id),
+            version=secret_version.version.value,
+            active=secret_version.active,
+        )
+        await record_audit_event(
+            self._audit_recorder,
+            audit_context,
+            action="secret.read",
+            resource_type="secret",
+            resource_id=str(validated_secret_id),
+            result=AuditResult.SUCCESS,
+            metadata={
+                "version_id": str(secret_version.id),
+                "version": secret_version.version.value,
+            },
+        )
+        return SecretVersionMetadataResponse.from_domain(secret_version)
+
+
+class RestoreSecretVersionUseCase:
+    def __init__(
+        self,
+        unit_of_work: UnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(self, request: RestoreSecretVersionRequest) -> SecretVersionMetadataResponse:
+        try:
+            secret_id = CreateSecretVersionUseCase._validate_secret_id(request.secret_id)
+            version_id = CreateSecretVersionUseCase._validate_secret_version_id(request.version_id)
+
+            async with self._unit_of_work as unit_of_work:
+                secret = await unit_of_work.secrets.get(secret_id)
+                if secret is None:
+                    raise SecretNotFoundError("Secret not found.")
+                CreateSecretVersionUseCase._ensure_secret_belongs_to_project(
+                    secret,
+                    request.project_id,
+                )
+
+                secret_version = await unit_of_work.secret_versions.get(version_id)
+                if secret_version is None:
+                    raise SecretVersionNotFoundError("Secret version not found.")
+                CreateSecretVersionUseCase._ensure_version_belongs_to_secret(
+                    secret_version,
+                    secret_id,
+                )
+
+                try:
+                    await unit_of_work.secret_versions.deactivate_previous_versions(secret_id)
+                    restored = await unit_of_work.secret_versions.activate(version_id)
+                except SecretVersionRepositoryConflictError as exc:
+                    raise SecretVersionConflictError(
+                        "Secret version persistence conflict."
+                    ) from exc
+
+                await unit_of_work.commit()
+        except Exception:
+            log_application_event(
+                logger,
+                event="secret_version_restore",
+                result=AuditResult.FAILURE,
+                resource_id=request.secret_id,
+                version_id=request.version_id,
+                project_id=request.project_id,
+            )
+            await record_audit_event(
+                self._audit_recorder,
+                request.audit_context,
+                action="secret.rotate",
+                resource_type="secret",
+                resource_id=request.secret_id,
+                result=AuditResult.FAILURE,
+                metadata={"version_id": request.version_id, "operation": "restore"},
+            )
+            raise
+
+        log_application_event(
+            logger,
+            event="secret_version_restore",
+            result=AuditResult.SUCCESS,
+            resource_id=str(restored.secret_id),
+            version_id=str(restored.id),
+            version=restored.version.value,
+        )
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="secret.rotate",
+            resource_type="secret",
+            resource_id=str(restored.secret_id),
+            result=AuditResult.SUCCESS,
+            metadata={
+                "version_id": str(restored.id),
+                "version": restored.version.value,
+                "operation": "restore",
+            },
+        )
+        return SecretVersionMetadataResponse.from_domain(restored)
 
 
 class GetActiveSecretVersionUseCase:

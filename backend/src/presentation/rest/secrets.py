@@ -24,7 +24,7 @@ from application.secret.exceptions import (
     SecretNotFoundError as SecretMetadataNotFoundError,
 )
 from application.secret.use_cases import ArchiveSecretUseCase, GetSecretUseCase, UpdateSecretUseCase
-from application.secret_version.dto import CreateSecretVersionRequest
+from application.secret_version.dto import CreateSecretVersionRequest, RestoreSecretVersionRequest
 from application.secret_version.exceptions import (
     SecretNotFoundError,
     SecretVersionConflictError,
@@ -35,7 +35,9 @@ from application.secret_version.exceptions import (
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
+    GetSecretVersionMetadataUseCase,
     ListSecretVersionsUseCase,
+    RestoreSecretVersionUseCase,
 )
 from presentation.rest.audit_context import get_audit_context
 from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
@@ -46,7 +48,9 @@ from presentation.rest.dependencies import (
     get_create_secret_version_use_case,
     get_list_secret_versions_use_case,
     get_project_use_case,
+    get_restore_secret_version_use_case,
     get_secret_use_case,
+    get_secret_version_metadata_use_case,
     get_update_secret_use_case,
 )
 from presentation.rest.schemas import (
@@ -67,9 +71,17 @@ ListSecretVersionsUseCaseDependency = Annotated[
     ListSecretVersionsUseCase,
     Depends(get_list_secret_versions_use_case),
 ]
+GetSecretVersionMetadataUseCaseDependency = Annotated[
+    GetSecretVersionMetadataUseCase,
+    Depends(get_secret_version_metadata_use_case),
+]
 GetActiveSecretVersionUseCaseDependency = Annotated[
     GetActiveSecretVersionUseCase,
     Depends(get_active_secret_version_use_case),
+]
+RestoreSecretVersionUseCaseDependency = Annotated[
+    RestoreSecretVersionUseCase,
+    Depends(get_restore_secret_version_use_case),
 ]
 GetSecretUseCaseDependency = Annotated[
     GetSecretUseCase,
@@ -454,3 +466,100 @@ async def get_latest_secret_version(
         ) from exc
 
     return SecretVersionValueHttpResponse.from_application(response)
+
+
+@router.get(
+    "/{secret_id}/versions/{version_id}",
+    response_model=SecretVersionMetadataHttpResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid secret or version id."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Authentication is required."},
+        status.HTTP_403_FORBIDDEN: {"description": "Secret read permission is required."},
+        status.HTTP_404_NOT_FOUND: {"description": "Secret or version not found."},
+    },
+)
+async def get_secret_version(
+    secret_id: str,
+    version_id: str,
+    use_case: GetSecretVersionMetadataUseCaseDependency,
+    get_secret_use_case: GetSecretUseCaseDependency,
+    get_project_use_case: GetProjectUseCaseDependency,
+    audit_context: AuditContextDependency,
+    identity: AuthenticatedIdentityDependency,
+    authorize_use_case: AuthorizeUseCaseDependency,
+    request: Request,
+) -> SecretVersionMetadataHttpResponse:
+    secret = await authorize_existing_secret(
+        "secret.read",
+        secret_id,
+        get_secret_use_case,
+        get_project_use_case,
+        audit_context,
+        identity,
+        authorize_use_case,
+        request,
+    )
+    try:
+        response = await use_case.execute(
+            secret_id,
+            version_id,
+            audit_context=audit_context,
+            project_id=secret.project_id,
+        )
+    except SecretVersionValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except (SecretNotFoundError, SecretVersionNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return SecretVersionMetadataHttpResponse.from_application(response)
+
+
+@router.post(
+    "/{secret_id}/versions/{version_id}/restore",
+    response_model=SecretVersionMetadataHttpResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid secret or version id."},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Authentication is required."},
+        status.HTTP_403_FORBIDDEN: {"description": "Secret rotate permission is required."},
+        status.HTTP_404_NOT_FOUND: {"description": "Secret or version not found."},
+        status.HTTP_409_CONFLICT: {"description": "Secret version conflict."},
+    },
+)
+async def restore_secret_version(
+    secret_id: str,
+    version_id: str,
+    use_case: RestoreSecretVersionUseCaseDependency,
+    get_secret_use_case: GetSecretUseCaseDependency,
+    get_project_use_case: GetProjectUseCaseDependency,
+    audit_context: AuditContextDependency,
+    identity: AuthenticatedIdentityDependency,
+    authorize_use_case: AuthorizeUseCaseDependency,
+    request: Request,
+) -> SecretVersionMetadataHttpResponse:
+    secret = await authorize_existing_secret(
+        "secret.rotate",
+        secret_id,
+        get_secret_use_case,
+        get_project_use_case,
+        audit_context,
+        identity,
+        authorize_use_case,
+        request,
+    )
+    try:
+        response = await use_case.execute(
+            RestoreSecretVersionRequest(
+                secret_id=secret_id,
+                version_id=version_id,
+                project_id=secret.project_id,
+                audit_context=audit_context,
+            )
+        )
+    except SecretVersionValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except (SecretNotFoundError, SecretVersionNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SecretVersionConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return SecretVersionMetadataHttpResponse.from_application(response)

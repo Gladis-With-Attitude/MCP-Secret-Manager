@@ -37,7 +37,9 @@ from application.secret.use_cases import (
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
+    GetSecretVersionMetadataUseCase,
     ListSecretVersionsUseCase,
+    RestoreSecretVersionUseCase,
 )
 from application.vault.use_cases import (
     ArchiveVaultUseCase,
@@ -79,7 +81,9 @@ from presentation.rest.dependencies import (
     get_list_secrets_use_case,
     get_list_vaults_use_case,
     get_project_use_case,
+    get_restore_secret_version_use_case,
     get_secret_use_case,
+    get_secret_version_metadata_use_case,
     get_update_project_use_case,
     get_update_secret_use_case,
     get_update_vault_use_case,
@@ -354,10 +358,22 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 audit_recorder=audit_recorder,
             )
 
+        def build_get_secret_version_metadata_use_case() -> GetSecretVersionMetadataUseCase:
+            return GetSecretVersionMetadataUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
         def build_active_secret_version_use_case() -> GetActiveSecretVersionUseCase:
             return GetActiveSecretVersionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
                 DecryptSecretValueUseCase(crypto_provider),
+                audit_recorder=audit_recorder,
+            )
+
+        def restore_secret_version_use_case() -> RestoreSecretVersionUseCase:
+            return RestoreSecretVersionUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
                 audit_recorder=audit_recorder,
             )
 
@@ -387,8 +403,14 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
             create_secret_version_use_case
         )
         app.dependency_overrides[get_list_secret_versions_use_case] = list_secret_versions_use_case
+        app.dependency_overrides[get_secret_version_metadata_use_case] = (
+            build_get_secret_version_metadata_use_case
+        )
         app.dependency_overrides[get_active_secret_version_use_case] = (
             build_active_secret_version_use_case
+        )
+        app.dependency_overrides[get_restore_secret_version_use_case] = (
+            restore_secret_version_use_case
         )
 
     return app
