@@ -52,8 +52,8 @@ from presentation.rest.dependencies import (
 from presentation.rest.schemas import (
     CreateSecretVersionHttpRequest,
     SecretHttpResponse,
-    SecretVersionMetadataHttpResponse,
     SecretVersionHttpResponse,
+    SecretVersionMetadataHttpResponse,
     UpdateSecretHttpRequest,
 )
 

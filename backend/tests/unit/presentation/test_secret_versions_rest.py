@@ -172,12 +172,63 @@ class InMemorySecretRepository:
     async def get(self, secret_id: SecretId) -> Secret | None:
         return self._secrets.get(secret_id)
 
-    async def list_by_project(self, project_id: ProjectId) -> Sequence[Secret]:
-        return tuple(secret for secret in self._secrets.values() if secret.project_id == project_id)
+    async def update(self, secret: Secret) -> Secret:
+        if await self.exists_in_project(
+            secret.project_id,
+            secret.key,
+            exclude_secret_id=secret.id,
+        ):
+            raise SecretRepositoryConflictError("Secret key already exists.")
+        self._secrets[secret.id] = secret
+        return secret
 
-    async def exists_in_project(self, project_id: ProjectId, key: SecretKey) -> bool:
+    async def list_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> Sequence[Secret]:
+        _ = include_archived, search, status, secret_type
+        secrets = tuple(
+            secret for secret in self._secrets.values() if secret.project_id == project_id
+        )
+        return secrets[offset : offset + limit]
+
+    async def count_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> int:
+        return len(
+            await self.list_by_project(
+                project_id,
+                include_archived=include_archived,
+                limit=10_000,
+                offset=0,
+                search=search,
+                status=status,
+                secret_type=secret_type,
+            )
+        )
+
+    async def exists_in_project(
+        self,
+        project_id: ProjectId,
+        key: SecretKey,
+        *,
+        exclude_secret_id: SecretId | None = None,
+    ) -> bool:
         return any(
-            secret.project_id == project_id and secret.key == key
+            secret.project_id == project_id and secret.key == key and secret.id != exclude_secret_id
             for secret in self._secrets.values()
         )
 
@@ -314,9 +365,7 @@ async def build_app_with_secret(
     secrets = InMemorySecretRepository()
     secret_versions = InMemorySecretVersionRepository()
     projects = InMemoryProjectRepository()
-    project = await projects.create(
-        Project.create(vault_id=VaultId.new(), name=ProjectName("API"))
-    )
+    project = await projects.create(Project.create(vault_id=VaultId.new(), name=ProjectName("API")))
     secret = await secrets.create(
         Secret.create(
             project_id=project.id,
@@ -402,9 +451,7 @@ def test_create_secret_version_endpoint_returns_created_v1() -> None:
         assert app.state.authorize_use_case.requests[-1].permission == "secret.rotate"
         assert app.state.authorize_use_case.requests[-1].scope_type == "secret"
         assert app.state.authorize_use_case.requests[-1].scope_id == str(secret.id)
-        assert app.state.authorize_use_case.requests[-1].parent_project_id == str(
-            secret.project_id
-        )
+        assert app.state.authorize_use_case.requests[-1].parent_project_id == str(secret.project_id)
 
     anyio.run(run)
 
@@ -452,9 +499,7 @@ def test_secret_version_endpoint_returns_forbidden_when_permission_is_denied() -
 
         assert response.status_code == 403
         assert response.json() == {"detail": "Permission denied."}
-        assert app.state.authorize_use_case.requests[-1].parent_project_id == str(
-            secret.project_id
-        )
+        assert app.state.authorize_use_case.requests[-1].parent_project_id == str(secret.project_id)
 
     anyio.run(run)
 

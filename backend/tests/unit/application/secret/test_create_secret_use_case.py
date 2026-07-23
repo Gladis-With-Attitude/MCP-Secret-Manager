@@ -160,12 +160,69 @@ class InMemorySecretRepository:
     async def get(self, secret_id: SecretId) -> Secret | None:
         return self._secrets.get(secret_id)
 
-    async def list_by_project(self, project_id: ProjectId) -> Sequence[Secret]:
-        return tuple(secret for secret in self._secrets.values() if secret.project_id == project_id)
+    async def update(self, secret: Secret) -> Secret:
+        if await self.exists_in_project(
+            secret.project_id,
+            secret.key,
+            exclude_secret_id=secret.id,
+        ):
+            raise SecretRepositoryConflictError("Secret key already exists.")
+        self._secrets[secret.id] = secret
+        return secret
 
-    async def exists_in_project(self, project_id: ProjectId, key: SecretKey) -> bool:
+    async def list_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        limit: int = 20,
+        offset: int = 0,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> Sequence[Secret]:
+        _ = search
+        secrets = tuple(
+            secret for secret in self._secrets.values() if secret.project_id == project_id
+        )
+        if status == "archived":
+            secrets = tuple(secret for secret in secrets if secret.archived)
+        elif status == "active" or not include_archived:
+            secrets = tuple(secret for secret in secrets if not secret.archived)
+        if secret_type is not None:
+            secrets = tuple(secret for secret in secrets if secret.type.value == secret_type)
+        return secrets[offset : offset + limit]
+
+    async def count_by_project(
+        self,
+        project_id: ProjectId,
+        *,
+        include_archived: bool = False,
+        search: str | None = None,
+        status: str | None = None,
+        secret_type: str | None = None,
+    ) -> int:
+        return len(
+            await self.list_by_project(
+                project_id,
+                include_archived=include_archived,
+                limit=10_000,
+                offset=0,
+                search=search,
+                status=status,
+                secret_type=secret_type,
+            )
+        )
+
+    async def exists_in_project(
+        self,
+        project_id: ProjectId,
+        key: SecretKey,
+        *,
+        exclude_secret_id: SecretId | None = None,
+    ) -> bool:
         return any(
-            secret.project_id == project_id and secret.key == key
+            secret.project_id == project_id and secret.key == key and secret.id != exclude_secret_id
             for secret in self._secrets.values()
         )
 
@@ -379,7 +436,14 @@ def test_create_secret_use_case_allows_same_key_in_different_projects() -> None:
 
 def test_create_secret_use_case_maps_repository_conflict_to_duplicate_error() -> None:
     class ConflictingSecretRepository(InMemorySecretRepository):
-        async def exists_in_project(self, _project_id: ProjectId, _key: SecretKey) -> bool:
+        async def exists_in_project(
+            self,
+            _project_id: ProjectId,
+            _key: SecretKey,
+            *,
+            exclude_secret_id: SecretId | None = None,
+        ) -> bool:
+            _ = exclude_secret_id
             return False
 
         async def create(self, _secret: Secret) -> Secret:

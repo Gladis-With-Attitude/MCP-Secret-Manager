@@ -174,7 +174,10 @@ class FakeCreateSecretUseCase:
 class FakeGetSecretUseCase:
     async def execute(self, request: GetSecretRequest) -> SecretResponse:
         return SecretResponse(
-            id=request.secret_id, project_id=request.project_id, key="API_KEY", description=None
+            id=request.secret_id,
+            project_id=request.project_id or "project-1",
+            key="API_KEY",
+            description=None,
         )
 
 
