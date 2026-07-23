@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-type JsonValue = str | int | float | bool | None | Mapping[str, JsonValue] | Sequence[JsonValue]
+type JsonValue = str | int | float | bool | Mapping[str, JsonValue] | Sequence[JsonValue] | None
 type JsonObject = Mapping[str, JsonValue]
 
 

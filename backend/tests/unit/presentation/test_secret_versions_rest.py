@@ -16,7 +16,9 @@ from application.secret.use_cases import GetSecretUseCase
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
+    GetSecretVersionMetadataUseCase,
     ListSecretVersionsUseCase,
+    RestoreSecretVersionUseCase,
 )
 from domain.crypto.entities import EncryptedSecretValue, SecretEncryptionContext
 from domain.project.entities import Project
@@ -42,7 +44,9 @@ from presentation.rest.dependencies import (
     get_create_secret_version_use_case,
     get_list_secret_versions_use_case,
     get_project_use_case,
+    get_restore_secret_version_use_case,
     get_secret_use_case,
+    get_secret_version_metadata_use_case,
 )
 
 
@@ -275,6 +279,11 @@ class InMemorySecretVersionRepository:
             if version.secret_id == secret_id and version.active:
                 self._versions[version_id] = version.deactivate()
 
+    async def activate(self, secret_version_id: SecretVersionId) -> SecretVersion:
+        version = self._versions[secret_version_id]
+        self._versions[secret_version_id] = version.activate()
+        return self._versions[secret_version_id]
+
 
 class FakeCryptoProvider:
     def encrypt_secret_value(
@@ -396,6 +405,16 @@ async def build_app_with_secret(
             DecryptSecretValueUseCase(crypto_provider),
         )
 
+    async def metadata_dependency() -> AsyncIterator[GetSecretVersionMetadataUseCase]:
+        yield GetSecretVersionMetadataUseCase(
+            unit_of_work,
+        )
+
+    async def restore_dependency() -> AsyncIterator[RestoreSecretVersionUseCase]:
+        yield RestoreSecretVersionUseCase(
+            unit_of_work,
+        )
+
     async def get_secret_dependency() -> AsyncIterator[GetSecretUseCase]:
         yield GetSecretUseCase(unit_of_work)
 
@@ -405,6 +424,8 @@ async def build_app_with_secret(
     app.dependency_overrides[get_create_secret_version_use_case] = create_dependency
     app.dependency_overrides[get_list_secret_versions_use_case] = list_dependency
     app.dependency_overrides[get_active_secret_version_use_case] = latest_dependency
+    app.dependency_overrides[get_secret_version_metadata_use_case] = metadata_dependency
+    app.dependency_overrides[get_restore_secret_version_use_case] = restore_dependency
     app.dependency_overrides[get_secret_use_case] = get_secret_dependency
     app.dependency_overrides[get_project_use_case] = get_project_dependency
     app.dependency_overrides[get_authenticated_identity] = lambda: AuthenticatedIdentity(
@@ -432,6 +453,18 @@ async def get_latest_secret_version(app: FastAPI, secret_id: str) -> Response:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         return await client.get(f"/v1/secrets/{secret_id}/versions/latest")
+
+
+async def get_secret_version(app: FastAPI, secret_id: str, version_id: str) -> Response:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.get(f"/v1/secrets/{secret_id}/versions/{version_id}")
+
+
+async def restore_secret_version(app: FastAPI, secret_id: str, version_id: str) -> Response:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.post(f"/v1/secrets/{secret_id}/versions/{version_id}/restore")
 
 
 def test_create_secret_version_endpoint_returns_created_v1() -> None:
@@ -485,6 +518,54 @@ def test_secret_version_endpoints_return_history_and_latest() -> None:
             "secret.read",
             "secret.decrypt",
         ]
+
+    anyio.run(run)
+
+
+def test_secret_version_endpoint_returns_metadata_detail_without_value() -> None:
+    async def run() -> None:
+        app, secret = await build_app_with_secret()
+        created_response = await post_secret_version(app, str(secret.id), "plain-value-v1")
+
+        response = await get_secret_version(app, str(secret.id), created_response.json()["id"])
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["id"] == created_response.json()["id"]
+        assert payload["secret_id"] == str(secret.id)
+        assert payload["version"] == 1
+        assert "value" not in payload
+        assert app.state.authorize_use_case.requests[-1].permission == "secret.read"
+
+    anyio.run(run)
+
+
+def test_restore_secret_version_endpoint_reactivates_existing_version() -> None:
+    async def run() -> None:
+        app, secret = await build_app_with_secret()
+        first_response = await post_secret_version(app, str(secret.id), "plain-value-v1")
+        second_response = await post_secret_version(app, str(secret.id), "plain-value-v2")
+
+        restore_response = await restore_secret_version(
+            app,
+            str(secret.id),
+            first_response.json()["id"],
+        )
+        history_response = await get_secret_versions(app, str(secret.id))
+        latest_response = await get_latest_secret_version(app, str(secret.id))
+
+        assert restore_response.status_code == 200
+        assert restore_response.json()["id"] == first_response.json()["id"]
+        assert restore_response.json()["active"] is True
+        history = history_response.json()
+        assert [version["id"] for version in history] == [
+            first_response.json()["id"],
+            second_response.json()["id"],
+        ]
+        assert [version["active"] for version in history] == [True, False]
+        assert latest_response.json()["id"] == first_response.json()["id"]
+        assert latest_response.json()["value"] == "plain-value-v1"
+        assert app.state.authorize_use_case.requests[-3].permission == "secret.rotate"
 
     anyio.run(run)
 

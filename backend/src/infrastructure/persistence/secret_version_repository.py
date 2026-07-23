@@ -64,3 +64,16 @@ class SqlAlchemySecretVersionRepository:
             )
             .values(active=False)
         )
+
+    async def activate(self, secret_version_id: SecretVersionId) -> SecretVersion:
+        model = await self._session.get(SecretVersionModel, secret_version_id.value)
+        if model is None:
+            raise SecretVersionRepositoryConflictError("SecretVersion not found.")
+        model.active = True
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise SecretVersionRepositoryConflictError(
+                "SecretVersion persistence conflict."
+            ) from exc
+        return model.to_domain()

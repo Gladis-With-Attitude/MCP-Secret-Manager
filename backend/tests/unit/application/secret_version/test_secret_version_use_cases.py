@@ -9,7 +9,7 @@ import anyio
 import pytest
 
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
-from application.secret_version.dto import CreateSecretVersionRequest
+from application.secret_version.dto import CreateSecretVersionRequest, RestoreSecretVersionRequest
 from application.secret_version.exceptions import (
     SecretNotFoundError,
     SecretVersionConflictError,
@@ -19,7 +19,9 @@ from application.secret_version.exceptions import (
 from application.secret_version.use_cases import (
     CreateSecretVersionUseCase,
     GetActiveSecretVersionUseCase,
+    GetSecretVersionMetadataUseCase,
     ListSecretVersionsUseCase,
+    RestoreSecretVersionUseCase,
 )
 from domain.crypto.entities import EncryptedSecretValue, SecretEncryptionContext
 from domain.project.entities import Project
@@ -248,6 +250,11 @@ class InMemorySecretVersionRepository:
             if version.secret_id == secret_id and version.active:
                 self._versions[version_id] = version.deactivate()
 
+    async def activate(self, secret_version_id: SecretVersionId) -> SecretVersion:
+        version = self._versions[secret_version_id]
+        self._versions[secret_version_id] = version.activate()
+        return self._versions[secret_version_id]
+
 
 class FakeCryptoProvider:
     def encrypt_secret_value(
@@ -356,6 +363,20 @@ def build_get_active_use_case(
     )
 
 
+def build_get_metadata_use_case(
+    unit_of_work: InMemoryUnitOfWork,
+) -> GetSecretVersionMetadataUseCase:
+    return GetSecretVersionMetadataUseCase(
+        unit_of_work,
+    )
+
+
+def build_restore_use_case(unit_of_work: InMemoryUnitOfWork) -> RestoreSecretVersionUseCase:
+    return RestoreSecretVersionUseCase(
+        unit_of_work,
+    )
+
+
 def test_create_secret_version_use_case_creates_v1_as_active() -> None:
     async def run() -> None:
         unit_of_work, secret = await build_unit_of_work_with_secret()
@@ -440,6 +461,53 @@ def test_get_active_secret_version_logs_metadata_without_secret_value(
             }.items()
             for record in caplog.records
         )
+
+    anyio.run(run)
+
+
+def test_get_secret_version_metadata_use_case_returns_metadata_only() -> None:
+    async def run() -> None:
+        unit_of_work, secret = await build_unit_of_work_with_secret()
+        first = await build_create_use_case(unit_of_work).execute(
+            CreateSecretVersionRequest(secret_id=str(secret.id), value="credential-material")
+        )
+
+        response = await build_get_metadata_use_case(unit_of_work).execute(
+            str(secret.id),
+            first.id,
+        )
+
+        assert response.id == first.id
+        assert response.version == 1
+        assert not hasattr(response, "value")
+
+    anyio.run(run)
+
+
+def test_restore_secret_version_use_case_reactivates_previous_version() -> None:
+    async def run() -> None:
+        unit_of_work, secret = await build_unit_of_work_with_secret()
+        create_use_case = build_create_use_case(unit_of_work)
+        first = await create_use_case.execute(
+            CreateSecretVersionRequest(secret_id=str(secret.id), value="plain-value-v1")
+        )
+        second = await create_use_case.execute(
+            CreateSecretVersionRequest(secret_id=str(secret.id), value="plain-value-v2")
+        )
+
+        restored = await build_restore_use_case(unit_of_work).execute(
+            RestoreSecretVersionRequest(secret_id=str(secret.id), version_id=first.id)
+        )
+        history = await build_list_use_case(unit_of_work).execute(str(secret.id))
+        latest = await build_get_active_use_case(unit_of_work).execute(str(secret.id))
+
+        assert restored.id == first.id
+        assert restored.active is True
+        assert latest.id == first.id
+        assert [version.id for version in history] == [first.id, second.id]
+        assert [version.active for version in history] == [True, False]
+        assert latest.value == "plain-value-v1"
+        assert unit_of_work.committed is True
 
     anyio.run(run)
 

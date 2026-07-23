@@ -59,6 +59,9 @@ class SecretVersion:
     def deactivate(self) -> SecretVersion:
         return replace(self, active=False)
 
+    def activate(self) -> SecretVersion:
+        return replace(self, active=True)
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, SecretVersion):
             return NotImplemented

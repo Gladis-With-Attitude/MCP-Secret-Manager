@@ -221,6 +221,11 @@ class InMemorySecretVersionRepository:
     async def deactivate_previous_versions(self, _secret_id: SecretId) -> None:
         return None
 
+    async def activate(self, _secret_version_id: SecretVersionId) -> SecretVersion:
+        raise SecretVersionRepositoryConflictError(
+            "SecretVersion repository is not used in Vault tests."
+        )
+
 
 class InMemoryUnitOfWork:
     def __init__(self, repository: VaultRepository) -> None:
