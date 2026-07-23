@@ -59,8 +59,13 @@ describe("session client", () => {
 
   it("revokes the current browser session", async () => {
     vi.mocked(remove).mockResolvedValueOnce(undefined);
+    const logout = defaultSessionClient.logout;
 
-    await expect(defaultSessionClient.logout()).resolves.toBeUndefined();
+    if (!logout) {
+      throw new Error("Logout must be configured.");
+    }
+
+    await expect(logout()).resolves.toBeUndefined();
     expect(remove).toHaveBeenCalledWith("/v1/auth/session");
   });
 });
