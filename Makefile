@@ -19,7 +19,7 @@ AUDIT_EVENT_ID ?= audit-event-id
 ROLE_ID ?= role-id
 USER_ID ?= user-id
 
-.PHONY: install-dev up up-db down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run frontend-warm-pages format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
+.PHONY: install-dev up up-db up-observability down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run frontend-warm-pages format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
 
 define open_frontend_page
 	@url="$(FRONTEND_URL)$(1)"; \
@@ -50,6 +50,9 @@ up:
 
 up-db:
 	$(COMPOSE) --env-file $(ENV_FILE) up -d postgres
+
+up-observability:
+	$(COMPOSE) --env-file $(ENV_FILE) --profile observability up -d prometheus
 
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down

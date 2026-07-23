@@ -30,6 +30,7 @@ make down     # stop the stack
 make logs     # follow all service logs
 make logs-db  # follow postgres logs only
 make logs-bootstrap
+make up-observability  # start opt-in Prometheus scraping
 make db-current
 make db-history
 make db-upgrade
@@ -125,3 +126,6 @@ make up
 Frontend: `http://127.0.0.1:3000`
 
 Backend health: `http://127.0.0.1:8000/v1/health`
+
+Prometheus UI, when the observability profile is enabled:
+`http://127.0.0.1:9090`
