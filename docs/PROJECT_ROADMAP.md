@@ -120,7 +120,7 @@ Objective: transform the MVP into a production-ready product.
 | --- | --- | --- |
 | D1a | ✅ | REST request IDs, safe structured logging helpers, HTTP request logs and lightweight Prometheus-compatible request metrics |
 | D1b | ✅ | Prometheus scrape configuration, opt-in Compose service wiring and operator documentation for `/v1/metrics` |
-| D1c | ⏳ | Expanded application/service logs for high-value use cases |
+| D1c | ✅ | Expanded application/service logs for high-value use cases |
 | D1d | ⏳ | Grafana dashboards |
 | D1e | ⏳ | OpenTelemetry traces and cross-service correlation |
 
@@ -132,6 +132,12 @@ D1b makes the existing lightweight `/v1/metrics` endpoint operationally
 discoverable through checked-in Prometheus configuration and an opt-in local
 Compose profile. It does not add Grafana dashboards, broader application logs or
 OpenTelemetry tracing.
+
+D1c expands safe structured application logs across high-value lifecycle,
+credential, session and RBAC paths. The logs use resource identifiers, actor or
+owner identifiers, counts and configuration booleans, and continue to avoid
+request bodies, authorization headers, API keys, key prefixes, session tokens,
+secret values, names and descriptions.
 
 ### D2 - Security Hardening
 

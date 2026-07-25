@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from types import TracebackType
 from typing import Self
@@ -295,12 +296,15 @@ async def build_unit_of_work_with_vault() -> tuple[InMemoryUnitOfWork, Vault]:
     return InMemoryUnitOfWork(vaults, projects), vault
 
 
-def test_create_project_use_case_creates_project_in_existing_vault() -> None:
+def test_create_project_use_case_creates_project_in_existing_vault(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work, vault = await build_unit_of_work_with_vault()
         projects = unit_of_work.projects
         use_case = CreateProjectUseCase(unit_of_work)
 
+        caplog.set_level(logging.INFO, logger="application.project.use_cases")
         response = await use_case.execute(
             CreateProjectRequest(vault_id=str(vault.id), name="  API  ")
         )
@@ -311,6 +315,18 @@ def test_create_project_use_case_creates_project_in_existing_vault() -> None:
         assert projects.create_calls == 1
         assert unit_of_work.committed is True
         assert unit_of_work.rolled_back is False
+        assert "API" not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "project_create",
+                "result": "success",
+                "resource_id": response.id,
+                "vault_id": str(vault.id),
+                "description_configured": False,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
@@ -545,5 +561,54 @@ def test_archive_project_use_case_archives_project_idempotently() -> None:
         assert archived.status == "archived"
         assert archived_again.status == "archived"
         assert listed.data == ()
+
+    anyio.run(run)
+
+
+def test_project_mutation_logs_include_safe_lifecycle_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run() -> None:
+        unit_of_work, vault = await build_unit_of_work_with_vault()
+        created = await CreateProjectUseCase(unit_of_work).execute(
+            CreateProjectRequest(vault_id=str(vault.id), name="API")
+        )
+
+        caplog.set_level(logging.INFO, logger="application.project.use_cases")
+        updated = await UpdateProjectUseCase(unit_of_work).execute(
+            UpdateProjectRequest(
+                project_id=created.id,
+                name="Sensitive Service Name",
+                description="Private project boundary",
+            )
+        )
+        archived = await ArchiveProjectUseCase(unit_of_work).execute(
+            ArchiveProjectRequest(project_id=created.id)
+        )
+
+        assert "Sensitive Service Name" not in caplog.text
+        assert "Private project boundary" not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "project_update",
+                "result": "success",
+                "resource_id": updated.id,
+                "vault_id": str(vault.id),
+                "description_configured": True,
+            }.items()
+            for record in caplog.records
+        )
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "project_archive",
+                "result": "success",
+                "resource_id": archived.id,
+                "vault_id": str(vault.id),
+                "already_archived": False,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)

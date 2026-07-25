@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
+
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
+from application.observability import log_application_event
 from application.unit_of_work import UnitOfWork
 from application.vault.dto import (
     ArchiveVaultRequest,
@@ -25,6 +28,8 @@ from domain.vault.entities import Vault
 from domain.vault.exceptions import VaultDomainError
 from domain.vault.repositories import VaultRepositoryConflictError
 from domain.vault.value_objects import VaultDescription, VaultId, VaultName
+
+logger = logging.getLogger(__name__)
 
 
 class CreateVaultUseCase:
@@ -54,6 +59,11 @@ class CreateVaultUseCase:
 
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="vault_create",
+                result=AuditResult.FAILURE,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -65,6 +75,13 @@ class CreateVaultUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="vault_create",
+            result=AuditResult.SUCCESS,
+            resource_id=str(created_vault.id),
+            description_configured=created_vault.description.value is not None,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -184,6 +201,12 @@ class GetVaultUseCase:
                 if vault is None:
                     raise VaultNotFoundError("Vault not found.")
         except Exception:
+            log_application_event(
+                logger,
+                event="vault_get",
+                result=AuditResult.FAILURE,
+                resource_id=request.vault_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -195,6 +218,14 @@ class GetVaultUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="vault_get",
+            result=AuditResult.SUCCESS,
+            resource_id=str(vault.id),
+            archived=vault.archived,
+            locked=vault.locked,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -241,6 +272,12 @@ class UpdateVaultUseCase:
 
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="vault_update",
+                result=AuditResult.FAILURE,
+                resource_id=request.vault_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -252,6 +289,13 @@ class UpdateVaultUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="vault_update",
+            result=AuditResult.SUCCESS,
+            resource_id=str(updated_vault.id),
+            description_configured=updated_vault.description.value is not None,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -287,6 +331,12 @@ class ArchiveVaultUseCase:
                 )
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="vault_archive",
+                result=AuditResult.FAILURE,
+                resource_id=request.vault_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -298,6 +348,13 @@ class ArchiveVaultUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="vault_archive",
+            result=AuditResult.SUCCESS,
+            resource_id=str(archived_vault.id),
+            already_archived=vault.archived,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from types import TracebackType
 from typing import Self
@@ -348,13 +349,16 @@ def test_create_vault_use_case_rejects_invalid_name() -> None:
     anyio.run(run)
 
 
-def test_create_vault_use_case_records_success_audit_event() -> None:
+def test_create_vault_use_case_records_success_audit_event(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         repository = InMemoryVaultRepository()
         unit_of_work = InMemoryUnitOfWork(repository)
         audit_recorder = RecordingAuditRecorder()
         use_case = CreateVaultUseCase(unit_of_work, audit_recorder=audit_recorder)
 
+        caplog.set_level(logging.INFO, logger="application.vault.use_cases")
         await use_case.execute(
             CreateVaultRequest(
                 name="Production",
@@ -368,6 +372,17 @@ def test_create_vault_use_case_records_success_audit_event() -> None:
         assert event.result.value == "SUCCESS"
         assert event.actor_id == "actor-1"
         assert event.resource_id is not None
+        assert "Production" not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "vault_create",
+                "result": "success",
+                "resource_id": event.resource_id,
+                "description_configured": False,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
@@ -519,6 +534,52 @@ def test_archive_vault_use_case_marks_vault_archived_idempotently() -> None:
         assert first.status == "archived"
         assert second.archived is True
         assert first.archived_at is not None
+
+    anyio.run(run)
+
+
+def test_vault_mutation_logs_include_safe_lifecycle_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run() -> None:
+        repository = InMemoryVaultRepository()
+        unit_of_work = InMemoryUnitOfWork(repository)
+        created = await CreateVaultUseCase(unit_of_work).execute(CreateVaultRequest(name="Legacy"))
+
+        caplog.set_level(logging.INFO, logger="application.vault.use_cases")
+        updated = await UpdateVaultUseCase(unit_of_work).execute(
+            UpdateVaultRequest(
+                vault_id=created.id,
+                name="Legacy Runtime",
+                description="Private operations boundary",
+            )
+        )
+        archived = await ArchiveVaultUseCase(unit_of_work).execute(
+            ArchiveVaultRequest(vault_id=created.id)
+        )
+
+        assert "Legacy Runtime" not in caplog.text
+        assert "Private operations boundary" not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "vault_update",
+                "result": "success",
+                "resource_id": updated.id,
+                "description_configured": True,
+            }.items()
+            for record in caplog.records
+        )
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "vault_archive",
+                "result": "success",
+                "resource_id": archived.id,
+                "already_archived": False,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 

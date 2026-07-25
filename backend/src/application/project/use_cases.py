@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
+
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
+from application.observability import log_application_event
 from application.project.dto import (
     ArchiveProjectRequest,
     CreateProjectRequest,
@@ -27,6 +30,8 @@ from domain.project.exceptions import ProjectDomainError
 from domain.project.repositories import ProjectRepositoryConflictError
 from domain.project.value_objects import ProjectDescription, ProjectId, ProjectName
 from domain.vault.value_objects import VaultId
+
+logger = logging.getLogger(__name__)
 
 
 class CreateProjectUseCase:
@@ -67,6 +72,12 @@ class CreateProjectUseCase:
 
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="project_create",
+                result=AuditResult.FAILURE,
+                vault_id=request.vault_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -78,6 +89,14 @@ class CreateProjectUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="project_create",
+            result=AuditResult.SUCCESS,
+            resource_id=str(created_project.id),
+            vault_id=str(created_project.vault_id),
+            description_configured=created_project.description.value is not None,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -215,6 +234,12 @@ class GetProjectUseCase:
                 if project is None:
                     raise ProjectNotFoundError("Project not found.")
         except Exception:
+            log_application_event(
+                logger,
+                event="project_get",
+                result=AuditResult.FAILURE,
+                resource_id=request.project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -226,6 +251,14 @@ class GetProjectUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="project_get",
+            result=AuditResult.SUCCESS,
+            resource_id=str(project.id),
+            vault_id=str(project.vault_id),
+            archived=project.archived,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -280,6 +313,12 @@ class UpdateProjectUseCase:
 
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="project_update",
+                result=AuditResult.FAILURE,
+                resource_id=request.project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -291,6 +330,14 @@ class UpdateProjectUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="project_update",
+            result=AuditResult.SUCCESS,
+            resource_id=str(updated_project.id),
+            vault_id=str(updated_project.vault_id),
+            description_configured=updated_project.description.value is not None,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,
@@ -331,6 +378,12 @@ class ArchiveProjectUseCase:
                 )
                 await unit_of_work.commit()
         except Exception:
+            log_application_event(
+                logger,
+                event="project_archive",
+                result=AuditResult.FAILURE,
+                resource_id=request.project_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 request.audit_context,
@@ -342,6 +395,14 @@ class ArchiveProjectUseCase:
             )
             raise
 
+        log_application_event(
+            logger,
+            event="project_archive",
+            result=AuditResult.SUCCESS,
+            resource_id=str(archived_project.id),
+            vault_id=str(archived_project.vault_id),
+            already_archived=project.archived,
+        )
         await record_audit_event(
             self._audit_recorder,
             request.audit_context,

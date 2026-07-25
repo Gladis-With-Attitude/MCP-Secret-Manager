@@ -116,29 +116,47 @@ class CreateServiceAccountUseCase:
         self._unit_of_work = unit_of_work
 
     async def execute(self, request: CreateServiceAccountRequest) -> ServiceAccountResponse:
-        project_id = self._validate_project_id(request.project_id)
-        name = self._validate_name(request.name)
-        description = request.description.strip() if request.description is not None else None
-        if description == "":
-            description = None
+        try:
+            project_id = self._validate_project_id(request.project_id)
+            name = self._validate_name(request.name)
+            description = request.description.strip() if request.description is not None else None
+            if description == "":
+                description = None
 
-        async with self._unit_of_work as unit_of_work:
-            project = await unit_of_work.projects.get(project_id)
-            if project is None:
-                raise IdentityNotFoundError("Project not found.")
+            async with self._unit_of_work as unit_of_work:
+                project = await unit_of_work.projects.get(project_id)
+                if project is None:
+                    raise IdentityNotFoundError("Project not found.")
 
-            service_account = ServiceAccount.create(
-                project_id=project_id,
-                name=name,
-                description=description,
+                service_account = ServiceAccount.create(
+                    project_id=project_id,
+                    name=name,
+                    description=description,
+                )
+                try:
+                    created = await unit_of_work.service_accounts.create(service_account)
+                except ServiceAccountRepositoryConflictError as exc:
+                    raise IdentityConflictError(
+                        "A service account with this name already exists in this project."
+                    ) from exc
+                await unit_of_work.commit()
+        except Exception:
+            log_application_event(
+                logger,
+                event="service_account_create",
+                result=AuditResult.FAILURE,
+                project_id=request.project_id,
             )
-            try:
-                created = await unit_of_work.service_accounts.create(service_account)
-            except ServiceAccountRepositoryConflictError as exc:
-                raise IdentityConflictError(
-                    "A service account with this name already exists in this project."
-                ) from exc
-            await unit_of_work.commit()
+            raise
+
+        log_application_event(
+            logger,
+            event="service_account_create",
+            result=AuditResult.SUCCESS,
+            resource_id=str(created.id),
+            project_id=str(created.project_id),
+            description_configured=created.description is not None,
+        )
 
         return ServiceAccountResponse.from_domain(created)
 
@@ -447,6 +465,14 @@ class RevokeApiKeyUseCase:
             result=AuditResult.SUCCESS,
             metadata={"key_prefix": revoked.key_prefix},
         )
+        log_application_event(
+            logger,
+            event="api_key_revoke",
+            result=AuditResult.SUCCESS,
+            resource_id=str(revoked.id),
+            owner_id=str(revoked.owner_id),
+            owner_type=revoked.owner_type.value,
+        )
         return ApiKeyResponse.from_domain(revoked)
 
 
@@ -500,6 +526,17 @@ class UpdateApiKeyUseCase:
             resource_id=str(updated.id),
             result=AuditResult.SUCCESS,
             metadata={"key_prefix": updated.key_prefix},
+        )
+        log_application_event(
+            logger,
+            event="api_key_update",
+            result=AuditResult.SUCCESS,
+            resource_id=str(updated.id),
+            owner_id=str(updated.owner_id),
+            owner_type=updated.owner_type.value,
+            expires_at_configured=updated.expires_at is not None,
+            permissions_count=len(updated.granted_permissions),
+            scopes_count=len(updated.scopes),
         )
         return ApiKeyResponse.from_domain(updated)
 
@@ -676,6 +713,16 @@ class CreateSessionUseCase:
             result=AuditResult.SUCCESS,
             metadata={"api_key_id": str(created.api_key_id), "token_prefix": created.token_prefix},
         )
+        log_application_event(
+            logger,
+            event="session_create",
+            result=AuditResult.SUCCESS,
+            resource_id=str(created.id),
+            owner_id=str(created.owner_id),
+            owner_type=created.owner_type.value,
+            credential_id=str(created.api_key_id),
+            expires_at_configured=True,
+        )
 
         return SessionCreatedResponse(session_token=raw_session_token, session=current_session)
 
@@ -731,30 +778,57 @@ class AuthenticateSessionUseCase:
     async def execute(self, raw_session_token: str) -> AuthenticatedIdentityResponse:
         token_prefix = self._session_token_generator.extract_prefix(raw_session_token)
         if token_prefix is None:
+            log_application_event(
+                logger,
+                event="session_authenticate",
+                result=AuditResult.FAILURE,
+                reason="invalid_prefix",
+            )
             raise AuthenticationFailedError("Invalid session.")
 
-        async with self._unit_of_work as unit_of_work:
-            auth_session = await unit_of_work.auth_sessions.get_by_prefix(token_prefix)
-            if auth_session is None:
-                raise AuthenticationFailedError("Invalid session.")
-            if not self._session_token_hasher.verify(
-                raw_session_token,
-                auth_session.hashed_token,
-            ):
-                raise AuthenticationFailedError("Invalid session.")
-            if auth_session.is_revoked() or auth_session.is_expired(datetime.now(UTC)):
-                raise AuthenticationFailedError("Invalid session.")
-            api_key = await unit_of_work.api_keys.get(auth_session.api_key_id)
-            if api_key is None or api_key.is_revoked() or api_key.is_expired(datetime.now(UTC)):
-                raise AuthenticationFailedError("Invalid session.")
-            await CreateApiKeyUseCase._ensure_active_owner(
-                unit_of_work,
-                auth_session.owner_id,
-                auth_session.owner_type,
+        try:
+            async with self._unit_of_work as unit_of_work:
+                auth_session = await unit_of_work.auth_sessions.get_by_prefix(token_prefix)
+                if auth_session is None:
+                    raise AuthenticationFailedError("Invalid session.")
+                if not self._session_token_hasher.verify(
+                    raw_session_token,
+                    auth_session.hashed_token,
+                ):
+                    raise AuthenticationFailedError("Invalid session.")
+                if auth_session.is_revoked() or auth_session.is_expired(datetime.now(UTC)):
+                    raise AuthenticationFailedError("Invalid session.")
+                api_key = await unit_of_work.api_keys.get(auth_session.api_key_id)
+                if api_key is None or api_key.is_revoked() or api_key.is_expired(
+                    datetime.now(UTC)
+                ):
+                    raise AuthenticationFailedError("Invalid session.")
+                await CreateApiKeyUseCase._ensure_active_owner(
+                    unit_of_work,
+                    auth_session.owner_id,
+                    auth_session.owner_type,
+                )
+                updated = auth_session.mark_seen()
+                await unit_of_work.auth_sessions.update(updated)
+                await unit_of_work.commit()
+        except Exception:
+            log_application_event(
+                logger,
+                event="session_authenticate",
+                result=AuditResult.FAILURE,
+                reason="invalid_session",
             )
-            updated = auth_session.mark_seen()
-            await unit_of_work.auth_sessions.update(updated)
-            await unit_of_work.commit()
+            raise
+
+        log_application_event(
+            logger,
+            event="session_authenticate",
+            result=AuditResult.SUCCESS,
+            resource_id=str(auth_session.id),
+            owner_id=str(auth_session.owner_id),
+            owner_type=auth_session.owner_type.value,
+            credential_id=str(auth_session.api_key_id),
+        )
 
         return AuthenticatedIdentityResponse(
             id=str(auth_session.owner_id),
@@ -829,6 +903,15 @@ class RevokeCurrentSessionUseCase:
             result=AuditResult.SUCCESS,
             metadata={"api_key_id": str(revoked.api_key_id)},
         )
+        log_application_event(
+            logger,
+            event="session_revoke_current",
+            result=AuditResult.SUCCESS,
+            resource_id=str(revoked.id),
+            owner_id=str(revoked.owner_id),
+            owner_type=revoked.owner_type.value,
+            credential_id=str(revoked.api_key_id),
+        )
 
 
 class GetCurrentProfileUseCase:
@@ -886,6 +969,14 @@ class UpdateCurrentProfileUseCase:
             resource_type="user",
             resource_id=request.identity_id,
             result=AuditResult.SUCCESS,
+        )
+        log_application_event(
+            logger,
+            event="profile_update",
+            result=AuditResult.SUCCESS,
+            resource_id=request.identity_id,
+            identity_type=request.identity_type,
+            organization_configured=organization is not None,
         )
         return response
 
@@ -962,6 +1053,14 @@ class RevokeSessionUseCase:
             resource_type="auth_session",
             resource_id=str(revoked.id),
             result=AuditResult.SUCCESS,
+        )
+        log_application_event(
+            logger,
+            event="session_revoke",
+            result=AuditResult.SUCCESS,
+            resource_id=str(revoked.id),
+            owner_id=str(revoked.owner_id),
+            owner_type=revoked.owner_type.value,
         )
 
 
@@ -1063,6 +1162,16 @@ class UpdatePreferencesUseCase:
             resource_id=request.identity_id,
             result=AuditResult.SUCCESS,
         )
+        log_application_event(
+            logger,
+            event="settings_preferences_update",
+            result=AuditResult.SUCCESS,
+            resource_id=request.identity_id,
+            identity_type=request.identity_type,
+            theme=request.theme,
+            language=request.language,
+            timezone_configured=timezone is not None,
+        )
         return UserPreferencesResponse.from_domain(updated)
 
 
@@ -1104,6 +1213,17 @@ class UpdateNotificationsUseCase:
             resource_type="user_preferences",
             resource_id=request.identity_id,
             result=AuditResult.SUCCESS,
+        )
+        log_application_event(
+            logger,
+            event="settings_notifications_update",
+            result=AuditResult.SUCCESS,
+            resource_id=request.identity_id,
+            identity_type=request.identity_type,
+            audit_alerts_enabled=request.audit_alerts,
+            email_enabled=request.email_enabled,
+            in_app_enabled=request.in_app_enabled,
+            security_alerts_enabled=request.security_alerts,
         )
         return NotificationPreferencesResponse.from_domain(updated)
 

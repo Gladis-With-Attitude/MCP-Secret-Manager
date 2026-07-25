@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from types import TracebackType
 from typing import Self
@@ -357,12 +358,15 @@ def test_permission_checker_denies_missing_permission() -> None:
     anyio.run(run)
 
 
-def test_authorize_use_case_raises_when_permission_is_denied() -> None:
+def test_authorize_use_case_raises_when_permission_is_denied(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryRbacUnitOfWork()
         user_id = UserId.new()
         audit_recorder = RecordingAuditRecorder()
 
+        caplog.set_level(logging.WARNING, logger="application.rbac.use_cases")
         with pytest.raises(AuthorizationDeniedError):
             await AuthorizeUseCase(
                 PermissionChecker(unit_of_work),
@@ -385,6 +389,19 @@ def test_authorize_use_case_raises_when_permission_is_denied() -> None:
         assert event.result.value == "FAILURE"
         assert event.actor_id == str(user_id)
         assert event.metadata == {"permission": "vault.read", "protocol": "rest"}
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "permission_authorize",
+                "result": "failure",
+                "identity_id": str(user_id),
+                "identity_type": "user",
+                "permission": "vault.read",
+                "scope_type": "global",
+                "scope_id": None,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
@@ -547,7 +564,9 @@ def test_multiple_roles_allow_union_of_permissions() -> None:
     anyio.run(run)
 
 
-def test_role_management_use_cases_create_update_and_list_custom_roles() -> None:
+def test_role_management_use_cases_create_update_and_list_custom_roles(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryRbacUnitOfWork()
         secret_read = await unit_of_work.permissions.create(
@@ -557,6 +576,7 @@ def test_role_management_use_cases_create_update_and_list_custom_roles() -> None
             Permission.create(PermissionName("secret.rotate"), "Rotate secrets.")
         )
 
+        caplog.set_level(logging.INFO, logger="application.rbac.use_cases")
         created = await CreateRoleUseCase(unit_of_work).execute(
             CreateRoleRequest(
                 name="secret-operator",
@@ -585,6 +605,28 @@ def test_role_management_use_cases_create_update_and_list_custom_roles() -> None
         )
         assert listed.total == 1
         assert listed.data[0].id == created.id
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "role_create",
+                "result": "success",
+                "resource_id": created.id,
+                "permissions_count": 1,
+                "system_role": False,
+            }.items()
+            for record in caplog.records
+        )
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "role_update",
+                "result": "success",
+                "resource_id": updated.id,
+                "permissions_count": 1,
+                "system_role": False,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
@@ -609,7 +651,9 @@ def test_role_management_rejects_system_role_update() -> None:
     anyio.run(run)
 
 
-def test_actor_role_use_cases_assign_list_and_revoke_user_roles() -> None:
+def test_actor_role_use_cases_assign_list_and_revoke_user_roles(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryRbacUnitOfWork()
         user = await unit_of_work.users.create(
@@ -620,6 +664,7 @@ def test_actor_role_use_cases_assign_list_and_revoke_user_roles() -> None:
         )
         role = await unit_of_work.roles.create(Role.create(RoleName("reader"), "Read data."))
 
+        caplog.set_level(logging.INFO, logger="application.rbac.use_cases")
         assigned = await AssignActorRoleUseCase(unit_of_work).execute(
             AssignActorRoleRequest(actor_id=str(user.id), role_id=str(role.id))
         )
@@ -642,5 +687,31 @@ def test_actor_role_use_cases_assign_list_and_revoke_user_roles() -> None:
             ListActorRolesRequest(actor_id=str(user.id))
         )
         assert remaining.data == ()
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "role_assign",
+                "result": "success",
+                "resource_id": assigned.id,
+                "actor_id": str(user.id),
+                "role_id": str(role.id),
+                "scope_type": "global",
+                "scope_configured": False,
+            }.items()
+            for record in caplog.records
+        )
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "role_revoke",
+                "result": "success",
+                "resource_id": revoked.id,
+                "actor_id": str(user.id),
+                "role_id": str(role.id),
+                "scope_type": "global",
+                "scope_configured": False,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)

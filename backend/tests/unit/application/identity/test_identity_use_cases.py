@@ -608,13 +608,16 @@ def test_create_user_creates_active_user() -> None:
     anyio.run(run)
 
 
-def test_create_service_account_creates_active_project_identity() -> None:
+def test_create_service_account_creates_active_project_identity(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryUnitOfWork()
         project = await unit_of_work.projects.create(
             Project.create(vault_id=VaultId.new(), name=ProjectName("API"))
         )
 
+        caplog.set_level(logging.INFO, logger="application.identity.use_cases")
         response = await CreateServiceAccountUseCase(unit_of_work).execute(
             CreateServiceAccountRequest(
                 project_id=str(project.id),
@@ -627,6 +630,19 @@ def test_create_service_account_creates_active_project_identity() -> None:
         assert response.name == "openclaw-api"
         assert response.status == "active"
         assert unit_of_work.committed is True
+        assert "openclaw-api" not in caplog.text
+        assert "OpenClaw API service account" not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "service_account_create",
+                "result": "success",
+                "resource_id": response.id,
+                "project_id": str(project.id),
+                "description_configured": True,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
@@ -785,13 +801,16 @@ def test_list_api_keys_filters_and_paginates_metadata() -> None:
     anyio.run(run)
 
 
-def test_update_api_key_changes_metadata_without_exposing_secret() -> None:
+def test_update_api_key_changes_metadata_without_exposing_secret(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryUnitOfWork()
         raw_api_key = await create_api_key_for_user(unit_of_work)
         stored = await unit_of_work.api_keys.get_by_prefix(FixedApiKeyGenerator.key_prefix)
         assert stored is not None
 
+        caplog.set_level(logging.INFO, logger="application.identity.use_cases")
         updated = await UpdateApiKeyUseCase(unit_of_work).execute(
             UpdateApiKeyRequest(
                 api_key_id=str(stored.id),
@@ -809,11 +828,27 @@ def test_update_api_key_changes_metadata_without_exposing_secret() -> None:
         assert updated.scopes == ("global",)
         assert not hasattr(updated, "api_key")
         assert raw_api_key not in repr(updated)
+        assert raw_api_key not in caplog.text
+        assert FixedApiKeyGenerator.key_prefix not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "api_key_update",
+                "result": "success",
+                "resource_id": updated.id,
+                "owner_id": str(stored.owner_id),
+                "owner_type": stored.owner_type.value,
+                "expires_at_configured": False,
+                "permissions_count": 2,
+                "scopes_count": 1,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
 
-def test_get_and_revoke_api_key() -> None:
+def test_get_and_revoke_api_key(caplog: pytest.LogCaptureFixture) -> None:
     async def run() -> None:
         unit_of_work = InMemoryUnitOfWork()
         raw_api_key = await create_api_key_for_user(unit_of_work)
@@ -821,12 +856,26 @@ def test_get_and_revoke_api_key() -> None:
         assert stored is not None
 
         fetched = await GetApiKeyUseCase(unit_of_work).execute(GetApiKeyRequest(str(stored.id)))
+        caplog.set_level(logging.INFO, logger="application.identity.use_cases")
         revoked = await RevokeApiKeyUseCase(unit_of_work).execute(RevokeApiKeyRequest(fetched.id))
 
         assert raw_api_key == FixedApiKeyGenerator.raw_api_key
         assert fetched.key_prefix == FixedApiKeyGenerator.key_prefix
         assert revoked.status == "revoked"
         assert unit_of_work.committed is True
+        assert raw_api_key not in caplog.text
+        assert FixedApiKeyGenerator.key_prefix not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "api_key_revoke",
+                "result": "success",
+                "resource_id": revoked.id,
+                "owner_id": str(stored.owner_id),
+                "owner_type": stored.owner_type.value,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
@@ -898,11 +947,14 @@ def test_get_current_session_rejects_missing_api_key() -> None:
     anyio.run(run)
 
 
-def test_create_and_authenticate_session_persists_hash_only() -> None:
+def test_create_and_authenticate_session_persists_hash_only(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryUnitOfWork()
         raw_api_key = await create_api_key_for_user(unit_of_work)
 
+        caplog.set_level(logging.INFO, logger="application.identity.use_cases")
         created = await CreateSessionUseCase(
             unit_of_work,
             FixedApiKeyGenerator(),
@@ -924,11 +976,41 @@ def test_create_and_authenticate_session_persists_hash_only() -> None:
         assert stored is not None
         assert stored.hashed_token == f"hash:{FixedSessionTokenGenerator.raw_session_token}"
         assert stored.hashed_token != created.session_token
+        assert raw_api_key not in caplog.text
+        assert FixedSessionTokenGenerator.raw_session_token not in caplog.text
+        assert FixedSessionTokenGenerator.token_prefix not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "session_create",
+                "result": "success",
+                "resource_id": str(stored.id),
+                "owner_id": created.session.user_id,
+                "owner_type": created.session.user_type,
+                "credential_id": created.session.api_key_id,
+                "expires_at_configured": True,
+            }.items()
+            for record in caplog.records
+        )
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "session_authenticate",
+                "result": "success",
+                "resource_id": authenticated.session_id,
+                "owner_id": authenticated.id,
+                "owner_type": authenticated.type,
+                "credential_id": authenticated.api_key_id,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 
 
-def test_revoke_current_session_rejects_future_session_authentication() -> None:
+def test_revoke_current_session_rejects_future_session_authentication(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         unit_of_work = InMemoryUnitOfWork()
         raw_api_key = await create_api_key_for_user(unit_of_work)
@@ -945,6 +1027,7 @@ def test_revoke_current_session_rejects_future_session_authentication() -> None:
             FakeApiKeyHasher(),
         ).execute(created.session_token)
 
+        caplog.set_level(logging.INFO, logger="application.identity.use_cases")
         await RevokeCurrentSessionUseCase(unit_of_work).execute(authenticated.session_id)
 
         with pytest.raises(AuthenticationFailedError):
@@ -953,6 +1036,20 @@ def test_revoke_current_session_rejects_future_session_authentication() -> None:
                 FixedSessionTokenGenerator(),
                 FakeApiKeyHasher(),
             ).execute(created.session_token)
+        assert FixedSessionTokenGenerator.raw_session_token not in caplog.text
+        assert FixedSessionTokenGenerator.token_prefix not in caplog.text
+        assert any(
+            getattr(record, "event_fields", {}).items()
+            >= {
+                "event": "session_revoke_current",
+                "result": "success",
+                "resource_id": authenticated.session_id,
+                "owner_id": authenticated.id,
+                "owner_type": authenticated.type,
+                "credential_id": authenticated.api_key_id,
+            }.items()
+            for record in caplog.records
+        )
 
     anyio.run(run)
 

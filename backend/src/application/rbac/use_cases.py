@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from application.audit.dto import AuditContext
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
+from application.observability import log_application_event
 from application.rbac.dto import (
     AssignActorRoleRequest,
     AuthorizationDecision,
@@ -51,6 +53,8 @@ ROLE_ACTION_PERMISSIONS = RolePermissionsResponse(
 CRITICAL_PERMISSION_PATTERN = frozenset(
     {"archive", "create", "delete", "decrypt", "revoke", "rotate", "update"}
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PermissionChecker:
@@ -178,6 +182,16 @@ class AuthorizeUseCase:
     async def execute(self, request: RequirePermission) -> AuthorizationDecision:
         allowed = await self._permission_checker.is_allowed(request)
         if not allowed:
+            log_application_event(
+                logger,
+                event="permission_authorize",
+                result=AuditResult.FAILURE,
+                identity_id=request.identity_id,
+                identity_type=request.identity_type,
+                permission=request.permission,
+                scope_type=request.scope_type,
+                scope_id=request.scope_id,
+            )
             await record_audit_event(
                 self._audit_recorder,
                 AuditContext(
@@ -194,6 +208,16 @@ class AuthorizeUseCase:
                 metadata={"permission": request.permission},
             )
             raise AuthorizationDeniedError("Permission denied.")
+        log_application_event(
+            logger,
+            event="permission_authorize",
+            result=AuditResult.SUCCESS,
+            identity_id=request.identity_id,
+            identity_type=request.identity_type,
+            permission=request.permission,
+            scope_type=request.scope_type,
+            scope_id=request.scope_id,
+        )
         return AuthorizationDecision(allowed=True)
 
 
@@ -303,6 +327,14 @@ class CreateRoleUseCase:
             result=AuditResult.SUCCESS,
             metadata={"permission_count": response.permissions_count},
         )
+        log_application_event(
+            logger,
+            event="role_create",
+            result=AuditResult.SUCCESS,
+            resource_id=response.id,
+            permissions_count=response.permissions_count,
+            system_role=response.is_system,
+        )
         return response
 
 
@@ -348,6 +380,14 @@ class UpdateRoleUseCase:
             resource_id=response.id,
             result=AuditResult.SUCCESS,
             metadata={"permission_count": response.permissions_count},
+        )
+        log_application_event(
+            logger,
+            event="role_update",
+            result=AuditResult.SUCCESS,
+            resource_id=response.id,
+            permissions_count=response.permissions_count,
+            system_role=response.is_system,
         )
         return response
 
@@ -419,6 +459,16 @@ class AssignActorRoleUseCase:
             result=AuditResult.SUCCESS,
             metadata={"actor_id": request.actor_id, "role_id": request.role_id},
         )
+        log_application_event(
+            logger,
+            event="role_assign",
+            result=AuditResult.SUCCESS,
+            resource_id=response.id,
+            actor_id=response.actor_id,
+            role_id=response.role_id,
+            scope_type=response.scope_type,
+            scope_configured=response.scope_id is not None,
+        )
         return response
 
 
@@ -459,6 +509,16 @@ class RevokeActorRoleUseCase:
             resource_id=response.id,
             result=AuditResult.SUCCESS,
             metadata={"actor_id": request.actor_id, "role_id": request.role_id},
+        )
+        log_application_event(
+            logger,
+            event="role_revoke",
+            result=AuditResult.SUCCESS,
+            resource_id=response.id,
+            actor_id=response.actor_id,
+            role_id=response.role_id,
+            scope_type=response.scope_type,
+            scope_configured=response.scope_id is not None,
         )
         return response
 
