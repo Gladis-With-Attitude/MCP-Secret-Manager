@@ -1,23 +1,15 @@
-import { ApiNotFoundError, get } from "@/lib/api";
+import { get } from "@/lib/api";
 
-import { auditEventMatchesQuery, mapAuditEventDtoToAuditEvent } from "../mappers/audit-mappers";
+import { mapAuditEventDtoToAuditEvent } from "../mappers/audit-mappers";
 import type { AuditEvent } from "../types/audit";
-import type { AuditListParamsDto, AuditListResponseDto } from "./audit-dto";
+import type { AuditEventDto, AuditListParamsDto, AuditListResponseDto } from "./audit-dto";
 
 async function listAuditEvents(params?: AuditListParamsDto): Promise<AuditListResponseDto> {
-  return get<AuditListResponseDto>("/v1/audit", { params });
+  return get<AuditListResponseDto>("/v1/audit/events", { params });
 }
 
 async function getAuditEvent(eventId: string): Promise<AuditEvent> {
-  const response = await listAuditEvents({ limit: 500, offset: 0, q: eventId, search: eventId });
-  const items = Array.isArray(response) ? response : response.data;
-  const event = items.map(mapAuditEventDtoToAuditEvent).find((item) => item.id === eventId);
-
-  if (!event || !auditEventMatchesQuery(event, eventId)) {
-    throw new ApiNotFoundError({ message: "Audit event not found." });
-  }
-
-  return event;
+  return mapAuditEventDtoToAuditEvent(await get<AuditEventDto>(`/v1/audit/events/${eventId}`));
 }
 
 const auditService = {

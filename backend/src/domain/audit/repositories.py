@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol
 
 from domain.audit.entities import AuditEvent
-from domain.audit.value_objects import AuditAction, AuditResourceType, AuditResult
+from domain.audit.value_objects import AuditAction, AuditEventId, AuditResourceType, AuditResult
 
 
 class AuditRepositoryConflictError(RuntimeError):
@@ -18,6 +18,7 @@ class AuditEventFilter:
     start_date: datetime | None = None
     end_date: datetime | None = None
     actor_id: str | None = None
+    query: str | None = None
     action: AuditAction | None = None
     resource_type: AuditResourceType | None = None
     resource_id: str | None = None
@@ -28,6 +29,9 @@ class AuditEventFilter:
 
 class AuditRepository(Protocol):
     async def create(self, event: AuditEvent) -> AuditEvent:
+        raise NotImplementedError
+
+    async def get(self, event_id: AuditEventId) -> AuditEvent | None:
         raise NotImplementedError
 
     async def search(self, filters: AuditEventFilter) -> Sequence[AuditEvent]:

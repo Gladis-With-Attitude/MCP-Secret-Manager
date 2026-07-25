@@ -21,6 +21,7 @@ class AuditQueryRequest:
     start_date: str | None = None
     end_date: str | None = None
     actor_id: str | None = None
+    query: str | None = None
     action: str | None = None
     resource_type: str | None = None
     resource_id: str | None = None

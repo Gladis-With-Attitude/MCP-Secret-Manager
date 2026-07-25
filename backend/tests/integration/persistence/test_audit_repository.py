@@ -115,6 +115,43 @@ async def test_audit_repository_persists_and_filters_events(
 
 @pytest.mark.integration
 @pytest.mark.anyio
+async def test_audit_repository_gets_event_by_id(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        repository = SqlAlchemyAuditRepository(session)
+        created = await repository.create(build_event("secret.decrypt", "secret-1"))
+        await session.commit()
+
+    async with session_factory() as session:
+        repository = SqlAlchemyAuditRepository(session)
+        found = await repository.get(created.id)
+
+    assert found == created
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_audit_repository_searches_text_query(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        repository = SqlAlchemyAuditRepository(session)
+        prod_event = build_event("secret.decrypt", "secret-prod-1")
+        dev_event = build_event("secret.decrypt", "secret-dev-1")
+        await repository.create(prod_event)
+        await repository.create(dev_event)
+        await session.commit()
+
+    async with session_factory() as session:
+        repository = SqlAlchemyAuditRepository(session)
+        events = await repository.search(AuditEventFilter(query="prod"))
+
+    assert tuple(event.resource_id for event in events) == ("secret-prod-1",)
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
 async def test_audit_repository_returns_events_in_chronological_order(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
