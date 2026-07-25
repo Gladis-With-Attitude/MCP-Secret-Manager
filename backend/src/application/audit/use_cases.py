@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from application.audit.dto import AuditContext, AuditEventResponse, AuditQueryRequest
-from application.audit.exceptions import AuditValidationError
+from application.audit.exceptions import AuditNotFoundError, AuditValidationError
 from application.audit.unit_of_work import AuditUnitOfWork
 from domain.audit.entities import AuditEvent, JsonValue
 from domain.audit.exceptions import AuditDomainError
@@ -12,6 +12,7 @@ from domain.audit.repositories import AuditEventFilter, AuditRecorder
 from domain.audit.value_objects import (
     AuditAction,
     AuditActorType,
+    AuditEventId,
     AuditResourceType,
     AuditResult,
 )
@@ -83,6 +84,7 @@ class ListAuditEventsUseCase:
                 start_date=ListAuditEventsUseCase._parse_datetime(request.start_date),
                 end_date=ListAuditEventsUseCase._parse_datetime(request.end_date),
                 actor_id=ListAuditEventsUseCase._normalize_optional(request.actor_id),
+                query=ListAuditEventsUseCase._validate_query(request.query),
                 action=AuditAction(request.action) if request.action is not None else None,
                 resource_type=AuditResourceType(request.resource_type)
                 if request.resource_type is not None
@@ -127,6 +129,32 @@ class ListAuditEventsUseCase:
         if offset < 0:
             raise AuditValidationError("Audit query offset must be greater than or equal to 0.")
         return offset
+
+    @staticmethod
+    def _validate_query(query: str | None) -> str | None:
+        normalized = ListAuditEventsUseCase._normalize_optional(query)
+        if normalized is not None and len(normalized) > 160:
+            raise AuditValidationError("Audit query must be at most 160 characters.")
+        return normalized
+
+
+class GetAuditEventUseCase:
+    def __init__(self, unit_of_work: AuditUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(self, event_id: str) -> AuditEventResponse:
+        try:
+            audit_event_id = AuditEventId.from_string(event_id)
+        except ValueError as exc:
+            raise AuditValidationError("Audit event id must be a valid UUID.") from exc
+
+        async with self._unit_of_work as unit_of_work:
+            event = await unit_of_work.audits.get(audit_event_id)
+
+        if event is None:
+            raise AuditNotFoundError("Audit event not found.")
+
+        return AuditEventResponse.from_domain(event)
 
 
 class PurgeExpiredAuditEventsUseCase:

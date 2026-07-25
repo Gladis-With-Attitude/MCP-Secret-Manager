@@ -30,8 +30,8 @@ Objective: make every core feature usable end to end.
 | B5 | ✅ | Authentication & Session End-to-End Integration |
 | B6 | ✅ | API Keys End-to-End Integration |
 | B7 | ✅ | RBAC End-to-End Integration |
-| B8 | ⏳ | Profile & Settings End-to-End Integration |
-| B9 | ⏳ | Audit End-to-End Integration |
+| B8 | ✅ | Profile & Settings End-to-End Integration |
+| B9 | ✅ | Audit End-to-End Integration |
 
 ### Phase B Acceptance Rules
 

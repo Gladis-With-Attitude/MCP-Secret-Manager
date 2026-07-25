@@ -94,7 +94,6 @@ function mapAuditFiltersToParams(filters: AuditFilters = {}): AuditListParamsDto
     resource_id: filters.resourceId?.trim() || undefined,
     resource_type: filters.resourceType?.trim() || undefined,
     result: filters.result && filters.result !== "all" ? filters.result.toUpperCase() : undefined,
-    search: filters.query?.trim() || undefined,
     start_date: filters.startDate || undefined,
   };
 }

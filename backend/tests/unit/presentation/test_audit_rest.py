@@ -7,12 +7,17 @@ import anyio
 from httpx import ASGITransport, AsyncClient
 
 from application.audit.dto import AuditContext, AuditEventResponse, AuditQueryRequest
+from application.audit.exceptions import AuditNotFoundError
 from application.identity.dto import AuthenticatedIdentityResponse
 from application.identity.use_cases import AuthenticateApiKeyUseCase
 from application.rbac.dto import AuthorizationDecision, RequirePermission
 from application.rbac.exceptions import AuthorizationDeniedError
 from presentation.rest.app import create_app
-from presentation.rest.dependencies import get_authorize_use_case, get_list_audit_events_use_case
+from presentation.rest.dependencies import (
+    get_audit_event_use_case,
+    get_authorize_use_case,
+    get_list_audit_events_use_case,
+)
 
 
 class FakeAuthenticateApiKeyUseCase:
@@ -67,6 +72,30 @@ class FakeListAuditEventsUseCase:
         )
 
 
+class FakeGetAuditEventUseCase:
+    def __init__(self) -> None:
+        self.event_id: str | None = None
+
+    async def execute(self, event_id: str) -> AuditEventResponse:
+        self.event_id = event_id
+        if event_id == "missing":
+            raise AuditNotFoundError("Audit event not found.")
+        return AuditEventResponse(
+            id=event_id,
+            timestamp="2026-07-21T12:00:00+00:00",
+            actor_id="a6ef559c-b860-4028-a050-bb7bd2244916",
+            actor_type="user",
+            action="secret.decrypt",
+            resource_type="secret",
+            resource_id="secret-1",
+            result="SUCCESS",
+            ip_address="127.0.0.1",
+            user_agent="test-client",
+            request_id="req-1",
+            metadata={"version": 2},
+        )
+
+
 def test_list_audit_events_returns_filtered_events_when_authorized() -> None:
     async def run() -> None:
         list_use_case = FakeListAuditEventsUseCase()
@@ -90,7 +119,7 @@ def test_list_audit_events_returns_filtered_events_when_authorized() -> None:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://testserver") as client:
             response = await client.get(
-                "/v1/audit?action=secret.decrypt&result=SUCCESS&limit=25",
+                "/v1/audit/events?action=secret.decrypt&q=secret-1&result=SUCCESS&limit=25",
                 headers={"Authorization": "Bearer valid-api-key"},
             )
 
@@ -98,9 +127,76 @@ def test_list_audit_events_returns_filtered_events_when_authorized() -> None:
         assert response.json()[0]["action"] == "secret.decrypt"
         assert list_use_case.request == AuditQueryRequest(
             action="secret.decrypt",
+            query="secret-1",
             result="SUCCESS",
             limit=25,
         )
+
+    anyio.run(run)
+
+
+def test_get_audit_event_returns_detail_when_authorized() -> None:
+    async def run() -> None:
+        get_use_case = FakeGetAuditEventUseCase()
+        app = create_app(
+            service_name="test-service",
+            authenticate_api_key_use_case=cast(
+                AuthenticateApiKeyUseCase,
+                FakeAuthenticateApiKeyUseCase(),
+            ),
+        )
+
+        async def authorize_dependency() -> AsyncIterator[AllowAuthorizeUseCase]:
+            yield AllowAuthorizeUseCase()
+
+        async def detail_dependency() -> AsyncIterator[FakeGetAuditEventUseCase]:
+            yield get_use_case
+
+        app.dependency_overrides[get_authorize_use_case] = authorize_dependency
+        app.dependency_overrides[get_audit_event_use_case] = detail_dependency
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get(
+                "/v1/audit/events/b40fc39f-dbc9-4d7e-907d-d2ef0ca58d44",
+                headers={"Authorization": "Bearer valid-api-key"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["id"] == "b40fc39f-dbc9-4d7e-907d-d2ef0ca58d44"
+        assert get_use_case.event_id == "b40fc39f-dbc9-4d7e-907d-d2ef0ca58d44"
+
+    anyio.run(run)
+
+
+def test_get_audit_event_returns_not_found() -> None:
+    async def run() -> None:
+        app = create_app(
+            service_name="test-service",
+            authenticate_api_key_use_case=cast(
+                AuthenticateApiKeyUseCase,
+                FakeAuthenticateApiKeyUseCase(),
+            ),
+        )
+
+        async def authorize_dependency() -> AsyncIterator[AllowAuthorizeUseCase]:
+            yield AllowAuthorizeUseCase()
+
+        async def detail_dependency() -> AsyncIterator[FakeGetAuditEventUseCase]:
+            yield FakeGetAuditEventUseCase()
+
+        app.dependency_overrides[get_authorize_use_case] = authorize_dependency
+        app.dependency_overrides[get_audit_event_use_case] = detail_dependency
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get(
+                "/v1/audit/events/missing",
+                headers={"Authorization": "Bearer valid-api-key"},
+            )
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Audit event not found."}
 
     anyio.run(run)
 

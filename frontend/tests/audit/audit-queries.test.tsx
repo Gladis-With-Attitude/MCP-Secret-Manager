@@ -65,7 +65,6 @@ describe("audit queries", () => {
       resource_id: undefined,
       resource_type: undefined,
       result: undefined,
-      search: undefined,
       start_date: undefined,
     });
     expect(
@@ -85,5 +84,6 @@ describe("audit queries", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data?.id).toBe("event_1");
+    expect(auditServiceMocks.getAuditEvent).toHaveBeenCalledWith("event_1");
   });
 });

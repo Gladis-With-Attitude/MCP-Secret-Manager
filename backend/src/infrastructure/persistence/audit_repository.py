@@ -3,12 +3,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import Text, cast, delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from domain.audit.entities import AuditEvent
 from domain.audit.repositories import AuditEventFilter, AuditRepositoryConflictError
+from domain.audit.value_objects import AuditEventId
 from infrastructure.persistence.audit_model import AuditEventModel
 
 
@@ -25,6 +26,12 @@ class SqlAlchemyAuditRepository:
             raise AuditRepositoryConflictError("AuditEvent persistence conflict.") from exc
         return model.to_domain()
 
+    async def get(self, event_id: AuditEventId) -> AuditEvent | None:
+        model = await self._session.get(AuditEventModel, event_id.value)
+        if model is None:
+            return None
+        return model.to_domain()
+
     async def search(self, filters: AuditEventFilter) -> Sequence[AuditEvent]:
         statement = select(AuditEventModel)
         if filters.start_date is not None:
@@ -33,6 +40,19 @@ class SqlAlchemyAuditRepository:
             statement = statement.where(AuditEventModel.timestamp <= filters.end_date)
         if filters.actor_id is not None:
             statement = statement.where(AuditEventModel.actor_id == filters.actor_id)
+        if filters.query is not None:
+            query_like = f"%{filters.query}%"
+            statement = statement.where(
+                or_(
+                    cast(AuditEventModel.id, Text).ilike(query_like),
+                    AuditEventModel.actor_id.ilike(query_like),
+                    AuditEventModel.action.ilike(query_like),
+                    AuditEventModel.resource_type.ilike(query_like),
+                    AuditEventModel.resource_id.ilike(query_like),
+                    AuditEventModel.request_id.ilike(query_like),
+                    cast(AuditEventModel.metadata_json, Text).ilike(query_like),
+                )
+            )
         if filters.action is not None:
             statement = statement.where(AuditEventModel.action == filters.action.value)
         if filters.resource_type is not None:

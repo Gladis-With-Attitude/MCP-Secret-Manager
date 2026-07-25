@@ -80,7 +80,6 @@ describe("audit mappers", () => {
       resource_id: undefined,
       resource_type: "secret",
       result: "FAILURE",
-      search: "secret_1",
       start_date: undefined,
     });
   });

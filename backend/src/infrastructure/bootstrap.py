@@ -9,7 +9,11 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from application.audit.use_cases import ListAuditEventsUseCase, PersistentAuditRecorder
+from application.audit.use_cases import (
+    GetAuditEventUseCase,
+    ListAuditEventsUseCase,
+    PersistentAuditRecorder,
+)
 from application.crypto.use_cases import DecryptSecretValueUseCase, EncryptSecretValueUseCase
 from application.health import HealthStatus
 from application.identity.use_cases import (
@@ -102,6 +106,7 @@ from presentation.rest.dependencies import (
     get_archive_secret_use_case,
     get_archive_vault_use_case,
     get_assign_actor_role_use_case,
+    get_audit_event_use_case,
     get_authorize_use_case,
     get_change_password_use_case,
     get_create_api_key_use_case,
@@ -475,6 +480,9 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def list_audit_events_use_case() -> ListAuditEventsUseCase:
             return ListAuditEventsUseCase(SqlAlchemyUnitOfWork(session_factory))
 
+        def audit_event_use_case() -> GetAuditEventUseCase:
+            return GetAuditEventUseCase(SqlAlchemyUnitOfWork(session_factory))
+
         def create_project_use_case() -> CreateProjectUseCase:
             return CreateProjectUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
@@ -604,6 +612,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         app.dependency_overrides[get_assign_actor_role_use_case] = assign_actor_role_use_case
         app.dependency_overrides[get_revoke_actor_role_use_case] = revoke_actor_role_use_case
         app.dependency_overrides[get_list_audit_events_use_case] = list_audit_events_use_case
+        app.dependency_overrides[get_audit_event_use_case] = audit_event_use_case
         app.dependency_overrides[get_create_project_use_case] = create_project_use_case
         app.dependency_overrides[get_list_projects_use_case] = list_projects_use_case
         app.dependency_overrides[get_project_use_case] = build_get_project_use_case

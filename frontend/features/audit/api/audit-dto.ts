@@ -31,7 +31,6 @@ type AuditListParamsDto = {
   resource_id?: string;
   resource_type?: string;
   result?: string;
-  search?: string;
   start_date?: string;
 };
 

@@ -8,7 +8,9 @@ from typing import Self
 import anyio
 
 from application.audit.dto import AuditContext, AuditQueryRequest
+from application.audit.exceptions import AuditNotFoundError
 from application.audit.use_cases import (
+    GetAuditEventUseCase,
     ListAuditEventsUseCase,
     PersistentAuditRecorder,
     PurgeExpiredAuditEventsUseCase,
@@ -16,7 +18,13 @@ from application.audit.use_cases import (
 )
 from domain.audit.entities import AuditEvent
 from domain.audit.repositories import AuditEventFilter, AuditRepository
-from domain.audit.value_objects import AuditAction, AuditActorType, AuditResourceType, AuditResult
+from domain.audit.value_objects import (
+    AuditAction,
+    AuditActorType,
+    AuditEventId,
+    AuditResourceType,
+    AuditResult,
+)
 
 
 class InMemoryAuditRepository:
@@ -27,6 +35,9 @@ class InMemoryAuditRepository:
         self.events.append(event)
         return event
 
+    async def get(self, event_id: AuditEventId) -> AuditEvent | None:
+        return next((event for event in self.events if event.id == event_id), None)
+
     async def search(self, filters: AuditEventFilter) -> Sequence[AuditEvent]:
         events = self.events
         if filters.start_date is not None:
@@ -35,6 +46,19 @@ class InMemoryAuditRepository:
             events = [event for event in events if event.timestamp <= filters.end_date]
         if filters.actor_id is not None:
             events = [event for event in events if event.actor_id == filters.actor_id]
+        if filters.query is not None:
+            query = filters.query.lower()
+            events = [
+                event
+                for event in events
+                if query in str(event.id).lower()
+                or query in (event.actor_id or "").lower()
+                or query in event.action.value.lower()
+                or query in event.resource_type.value.lower()
+                or query in (event.resource_id or "").lower()
+                or query in (event.request_id or "").lower()
+                or query in str(event.metadata).lower()
+            ]
         if filters.action is not None:
             events = [event for event in events if event.action == filters.action]
         if filters.resource_type is not None:
@@ -162,6 +186,77 @@ def test_audit_query_filters_failures_and_preserves_chronological_order() -> Non
         assert len(response) == 1
         assert response[0].resource_id == "secret-1"
         assert response[0].result == "FAILURE"
+
+    anyio.run(run)
+
+
+def test_audit_query_supports_frontend_search_text() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryAuditUnitOfWork()
+        recorder = PersistentAuditRecorder(unit_of_work)
+        await record_audit_event(
+            recorder,
+            AuditContext(actor_id="actor-1", actor_type="user", request_id="req-prod-1"),
+            "secret.decrypt",
+            "secret",
+            "secret-1",
+            AuditResult.SUCCESS,
+            metadata={"safe_label": "production"},
+        )
+        await record_audit_event(
+            recorder,
+            AuditContext(actor_id="actor-2", actor_type="user", request_id="req-dev-1"),
+            "secret.decrypt",
+            "secret",
+            "secret-2",
+            AuditResult.SUCCESS,
+            metadata={"safe_label": "development"},
+        )
+
+        response = await ListAuditEventsUseCase(unit_of_work).execute(
+            AuditQueryRequest(query="production")
+        )
+
+        assert len(response) == 1
+        assert response[0].resource_id == "secret-1"
+
+    anyio.run(run)
+
+
+def test_get_audit_event_returns_matching_event() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryAuditUnitOfWork()
+        event = AuditEvent.create(
+            actor_id="actor-1",
+            actor_type=AuditActorType("user"),
+            action=AuditAction("secret.decrypt"),
+            resource_type=AuditResourceType("secret"),
+            resource_id="secret-1",
+            result=AuditResult.SUCCESS,
+            ip_address=None,
+            user_agent=None,
+            request_id=None,
+        )
+        unit_of_work.repository.events.append(event)
+
+        response = await GetAuditEventUseCase(unit_of_work).execute(str(event.id))
+
+        assert response.id == str(event.id)
+        assert response.action == "secret.decrypt"
+
+    anyio.run(run)
+
+
+def test_get_audit_event_raises_not_found() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryAuditUnitOfWork()
+
+        try:
+            await GetAuditEventUseCase(unit_of_work).execute("ec514306-1b80-40f6-91bd-15b1fb051d13")
+        except AuditNotFoundError as exc:
+            assert str(exc) == "Audit event not found."
+        else:
+            raise AssertionError("Expected missing audit event to raise.")
 
     anyio.run(run)
 
