@@ -37,6 +37,7 @@ def create_app(
     opentelemetry: OpenTelemetryConfig | None = None,
     cors: CorsConfig | None = None,
     security_headers: SecurityHeadersConfig = DEFAULT_SECURITY_HEADERS,
+    secure_cookies: bool = False,
 ) -> FastAPI:
     docs_url = "/docs" if openapi_enabled else None
     openapi_url = "/openapi.json" if openapi_enabled else None
@@ -68,6 +69,7 @@ def create_app(
 
     metrics = InMemoryHttpMetrics()
     app.state.metrics = metrics
+    app.state.secure_cookies = secure_cookies
 
     @app.get("/v1/metrics", tags=["observability"], response_class=PlainTextResponse)
     async def metrics_endpoint() -> str:

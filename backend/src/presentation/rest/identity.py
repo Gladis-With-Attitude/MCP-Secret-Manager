@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from application.audit.dto import AuditContext
 from application.identity.dto import (
@@ -52,8 +52,10 @@ from application.identity.use_cases import (
 )
 from presentation.rest.audit_context import get_audit_context
 from presentation.rest.authentication import (
+    CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
     AuthenticatedIdentity,
+    generate_csrf_token,
     get_authenticated_identity,
     get_optional_authenticated_identity,
 )
@@ -190,6 +192,10 @@ AuditContextDependency = Annotated[AuditContext, Depends(get_audit_context)]
 SESSION_COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60
 
 
+def use_secure_cookies(request: Request) -> bool:
+    return bool(getattr(request.app.state, "secure_cookies", False))
+
+
 @router.post(
     "/auth/session",
     status_code=status.HTTP_201_CREATED,
@@ -201,6 +207,7 @@ SESSION_COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60
 )
 async def create_session(
     payload: CreateSessionHttpRequest,
+    request: Request,
     response: Response,
     use_case: CreateSessionUseCaseDependency,
     audit_context: AuditContextDependency,
@@ -217,13 +224,22 @@ async def create_session(
             detail="Invalid authentication credentials.",
         ) from exc
 
+    secure_cookies = use_secure_cookies(request)
     response.set_cookie(
         SESSION_COOKIE_NAME,
         created.session_token,
         httponly=True,
         max_age=SESSION_COOKIE_MAX_AGE_SECONDS,
         samesite="lax",
-        secure=False,
+        secure=secure_cookies,
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        generate_csrf_token(),
+        httponly=False,
+        max_age=SESSION_COOKIE_MAX_AGE_SECONDS,
+        samesite="lax",
+        secure=secure_cookies,
     )
     return CurrentSessionHttpResponse.from_application(created.session)
 
@@ -266,13 +282,16 @@ async def get_current_session(
     responses={status.HTTP_401_UNAUTHORIZED: {"description": "Authentication is required."}},
 )
 async def revoke_current_session(
+    request: Request,
     identity: AuthenticatedIdentityDependency,
     use_case: RevokeCurrentSessionUseCaseDependency,
     audit_context: AuditContextDependency,
 ) -> Response:
     await use_case.execute(identity.session_id, audit_context=audit_context)
+    secure_cookies = use_secure_cookies(request)
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
-    response.delete_cookie(SESSION_COOKIE_NAME, samesite="lax", secure=False)
+    response.delete_cookie(SESSION_COOKIE_NAME, samesite="lax", secure=secure_cookies)
+    response.delete_cookie(CSRF_COOKIE_NAME, samesite="lax", secure=secure_cookies)
     return response
 
 

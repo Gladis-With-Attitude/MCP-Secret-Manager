@@ -45,6 +45,9 @@ type ApiClient = {
 };
 
 const SAFE_RETRY_METHODS: HttpMethod[] = ["GET", "HEAD"];
+const CSRF_COOKIE_NAME = "mcp_sm_csrf";
+const CSRF_HEADER_NAME = "X-CSRF-Token";
+const CSRF_SAFE_METHODS: HttpMethod[] = ["GET", "HEAD"];
 
 function buildApiUrl(baseUrl: string, path: string, params?: RequestOptions["params"]): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -68,6 +71,31 @@ function serializeBody(body: unknown): BodyInit | undefined {
   }
 
   return JSON.stringify(body);
+}
+
+function readBrowserCookie(name: string): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const prefix = `${name}=`;
+  const cookie = document.cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith(prefix));
+
+  return cookie ? cookie.slice(prefix.length) : null;
+}
+
+function addCsrfHeader(method: HttpMethod, headers: Headers): void {
+  if (CSRF_SAFE_METHODS.includes(method) || headers.has(CSRF_HEADER_NAME)) {
+    return;
+  }
+
+  const csrfToken = readBrowserCookie(CSRF_COOKIE_NAME);
+  if (csrfToken) {
+    headers.set(CSRF_HEADER_NAME, csrfToken);
+  }
 }
 
 function getRetryCount(method: HttpMethod, retry: RequestOptions["retry"]): number {
@@ -161,6 +189,7 @@ function createApiClient(
             ...new Headers(options.headers),
           ]),
         });
+        addCsrfHeader(method, headers);
         const requestInfo = new Request(buildApiUrl(config.baseUrl, path, options.params), {
           body: serializeBody(options.body),
           credentials: options.credentials ?? config.credentials,

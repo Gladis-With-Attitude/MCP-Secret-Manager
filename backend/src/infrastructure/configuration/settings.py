@@ -81,7 +81,7 @@ class AppSettings(BaseSettings):
 
     cors_allowed_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
     cors_allowed_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    cors_allowed_headers: str = "Authorization,Content-Type"
+    cors_allowed_headers: str = "Authorization,Content-Type,X-CSRF-Token"
     cors_allow_credentials: bool = True
 
     mcp_enabled: bool = True

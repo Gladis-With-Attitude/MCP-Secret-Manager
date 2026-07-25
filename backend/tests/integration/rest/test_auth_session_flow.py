@@ -34,6 +34,7 @@ from infrastructure.identity import (
 from infrastructure.persistence import Base, SqlAlchemyApiKeyRepository, SqlAlchemyUnitOfWork
 from infrastructure.persistence.identity_repositories import SqlAlchemyUserRepository
 from presentation.rest.app import create_app
+from presentation.rest.authentication import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from presentation.rest.dependencies import (
     get_account_security_use_case,
     get_create_session_use_case,
@@ -200,6 +201,8 @@ async def test_api_key_session_browser_to_postgres_flow(
 
         assert created.status_code == 201
         assert "mcp_sm_session=" in created.headers["set-cookie"]
+        csrf_token = created.cookies.get(CSRF_COOKIE_NAME)
+        assert csrf_token is not None
 
         response = await client.get("/v1/auth/session")
         assert response.status_code == 200
@@ -207,8 +210,19 @@ async def test_api_key_session_browser_to_postgres_flow(
         assert response.json()["user"]["email"] == "session.operator@example.test"
         assert response.json()["user"]["name"] == "Session Operator"
 
+        missing_csrf = await client.patch(
+            "/v1/me/profile",
+            json={
+                "email": "session.operator@example.test",
+                "name": "Session Operator Updated",
+                "organization": "Operations",
+            },
+        )
+        assert missing_csrf.status_code == 403
+
         profile = await client.patch(
             "/v1/me/profile",
+            headers={CSRF_HEADER_NAME: csrf_token},
             json={
                 "email": "session.operator@example.test",
                 "name": "Session Operator Updated",
@@ -222,6 +236,7 @@ async def test_api_key_session_browser_to_postgres_flow(
 
         preferences = await client.patch(
             "/v1/me/preferences",
+            headers={CSRF_HEADER_NAME: csrf_token},
             json={
                 "date_time_format": "relative",
                 "display_density": "compact",
@@ -242,7 +257,7 @@ async def test_api_key_session_browser_to_postgres_flow(
         assert sessions.json()["data"][0]["current"] is True
         assert "mcp_sm_session_" not in sessions.text
 
-        revoked = await client.delete("/v1/auth/session")
+        revoked = await client.delete("/v1/auth/session", headers={CSRF_HEADER_NAME: csrf_token})
         assert revoked.status_code == 204
 
         after_revoke = await client.get("/v1/auth/session")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
+from hmac import compare_digest
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -15,6 +17,9 @@ from application.identity.use_cases import AuthenticateApiKeyUseCase, Authentica
 from presentation.rest.observability import get_or_create_request_id
 
 SESSION_COOKIE_NAME = "mcp_sm_session"
+CSRF_COOKIE_NAME = "mcp_sm_csrf"
+CSRF_HEADER_NAME = "X-CSRF-Token"
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +80,11 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.authenticated_identity = AuthenticatedIdentity.from_application(
                 authenticated
             )
+            if not is_csrf_token_valid(request):
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "CSRF token is missing or invalid."},
+                )
             return await call_next(request)
 
         if not authorization.startswith("Bearer "):
@@ -136,3 +146,19 @@ def get_authenticated_identity(
             detail="Authentication is required.",
         )
     return identity
+
+
+def generate_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def is_csrf_token_valid(request: Request) -> bool:
+    if request.method.upper() in SAFE_METHODS:
+        return True
+
+    cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
+    header_token = request.headers.get(CSRF_HEADER_NAME)
+    if cookie_token is None or header_token is None:
+        return False
+
+    return compare_digest(cookie_token, header_token.strip())

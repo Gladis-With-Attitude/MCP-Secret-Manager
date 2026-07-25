@@ -151,7 +151,7 @@ keys, session tokens and secret material.
 ### D2 - Security Hardening
 
 - D2a ✅ FastAPI baseline security headers and runtime-configured strict CORS
-- CSRF if cookies are used
+- D2b ✅ CSRF protection for HTTP-only session-cookie authentication
 - Rate limiting
 - Secret scanning
 - Dependency scanning
@@ -160,6 +160,11 @@ D2a applies baseline HTTP security headers to REST responses and wires FastAPI
 CORS middleware to the existing runtime allow-list. Production validation keeps
 security headers enabled, requires HTTPS CORS origins and rejects wildcard
 origins.
+
+D2b protects unsafe REST requests authenticated by the `mcp_sm_session`
+HTTP-only cookie with a double-submit CSRF token: the backend issues a readable
+`mcp_sm_csrf` cookie and requires the same value in `X-CSRF-Token`. Bearer API
+key requests and safe methods keep their existing behavior.
 
 ### D3 - CI/CD
 

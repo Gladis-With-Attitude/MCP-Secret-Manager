@@ -13,6 +13,7 @@ const config = {
 
 describe("API client", () => {
   afterEach(() => {
+    document.cookie = "mcp_sm_csrf=; Max-Age=0; path=/";
     vi.unstubAllGlobals();
   });
 
@@ -54,6 +55,38 @@ describe("API client", () => {
 
     await expect(client.post("/items", { name: "Alpha" })).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("echoes the CSRF cookie on unsafe browser requests", async () => {
+    document.cookie = "mcp_sm_csrf=csrf-token; path=/";
+    const fetchMock = vi.fn(async (request: Request) => {
+      expect(request.method).toBe("PATCH");
+      expect(request.headers.get("X-CSRF-Token")).toBe("csrf-token");
+
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createApiClient(config);
+
+    await expect(client.patch("/items/alpha", { name: "Alpha" })).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves an explicit CSRF header override", async () => {
+    document.cookie = "mcp_sm_csrf=csrf-token; path=/";
+    const fetchMock = vi.fn(async (request: Request) => {
+      expect(request.headers.get("X-CSRF-Token")).toBe("explicit-token");
+
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createApiClient(config);
+
+    await expect(
+      client.delete("/items/alpha", { headers: { "X-CSRF-Token": "explicit-token" } }),
+    ).resolves.toBeUndefined();
   });
 
   it("normalizes fetch failures and calls error hooks", async () => {

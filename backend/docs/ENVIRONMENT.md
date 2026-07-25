@@ -39,7 +39,7 @@ explicit `ConfigurationError` when a critical setting is missing or unsafe.
 | `MCP_SECRET_MANAGER_OPENAPI_ENABLED` | boolean | `true` | no | Enables OpenAPI docs. Must be `false` in production. |
 | `MCP_SECRET_MANAGER_CORS_ALLOWED_ORIGINS` | CSV string | local frontend origins | yes | Allowed CORS origins. Production origins must use HTTPS. |
 | `MCP_SECRET_MANAGER_CORS_ALLOWED_METHODS` | CSV string | common REST methods | yes | Allowed CORS methods. |
-| `MCP_SECRET_MANAGER_CORS_ALLOWED_HEADERS` | CSV string | `Authorization,Content-Type` | yes | Allowed CORS headers. |
+| `MCP_SECRET_MANAGER_CORS_ALLOWED_HEADERS` | CSV string | `Authorization,Content-Type,X-CSRF-Token` | yes | Allowed CORS headers. |
 | `MCP_SECRET_MANAGER_CORS_ALLOW_CREDENTIALS` | boolean | `true` | no | Whether CORS credentials are allowed. Cannot be used with wildcard origins. Production rejects wildcard origins. |
 | `MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED` | boolean | `true` | no | Enables baseline REST security headers. Must be `true` in production. HSTS is emitted when `MCP_SECRET_MANAGER_TLS_REQUIRED=true`. |
 | `MCP_SECRET_MANAGER_MCP_ENABLED` | boolean | `true` | no | Enables MCP runtime configuration. |

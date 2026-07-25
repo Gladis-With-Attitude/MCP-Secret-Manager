@@ -47,10 +47,16 @@ from application.identity.dto import (
     UserResponse,
 )
 from application.identity.exceptions import AuthenticationFailedError
-from application.identity.use_cases import AuthenticateApiKeyUseCase
+from application.identity.use_cases import AuthenticateApiKeyUseCase, AuthenticateSessionUseCase
 from application.rbac.dto import AuthorizationDecision, RequirePermission
 from presentation.rest.app import create_app
-from presentation.rest.authentication import AuthenticatedIdentity, get_authenticated_identity
+from presentation.rest.authentication import (
+    CSRF_COOKIE_NAME,
+    CSRF_HEADER_NAME,
+    SESSION_COOKIE_NAME,
+    AuthenticatedIdentity,
+    get_authenticated_identity,
+)
 from presentation.rest.dependencies import (
     get_account_security_use_case,
     get_api_key_use_case,
@@ -218,6 +224,18 @@ class FakeAuthenticateApiKeyUseCase:
             id="a6ef559c-b860-4028-a050-bb7bd2244916",
             type="user",
             api_key_id="71a35966-aa7e-48af-815a-77796de636af",
+        )
+
+
+class FakeAuthenticateSessionUseCase:
+    async def execute(self, session_token: str) -> AuthenticatedIdentityResponse:
+        if session_token != FAKE_BROWSER_SESSION_VALUE:
+            raise AuthenticationFailedError("Invalid session.")
+        return AuthenticatedIdentityResponse(
+            id="a6ef559c-b860-4028-a050-bb7bd2244916",
+            type="user",
+            api_key_id="71a35966-aa7e-48af-815a-77796de636af",
+            session_id="c890ab63-7337-4da3-a380-987f69aa3bdb",
         )
 
 
@@ -421,6 +439,10 @@ async def build_identity_app() -> FastAPI:
         authenticate_api_key_use_case=cast(
             AuthenticateApiKeyUseCase,
             FakeAuthenticateApiKeyUseCase(),
+        ),
+        authenticate_session_use_case=cast(
+            AuthenticateSessionUseCase,
+            FakeAuthenticateSessionUseCase(),
         ),
     )
 
@@ -1035,10 +1057,74 @@ def test_create_session_endpoint_sets_http_only_cookie() -> None:
 
         assert response.status_code == 201
         assert response.json()["user"]["name"] == "Ada Lovelace"
-        cookie = response.headers["set-cookie"]
-        assert "mcp_sm_session=" in cookie
-        assert "HttpOnly" in cookie
-        assert "valid-api-key" not in cookie
+        cookies = response.headers.get_list("set-cookie")
+        session_cookie = next(cookie for cookie in cookies if cookie.startswith("mcp_sm_session="))
+        csrf_cookie = next(cookie for cookie in cookies if cookie.startswith("mcp_sm_csrf="))
+        assert "HttpOnly" in session_cookie
+        assert "HttpOnly" not in csrf_cookie
+        assert "valid-api-key" not in session_cookie
+        assert "valid-api-key" not in csrf_cookie
+
+    anyio.run(run)
+
+
+def test_cookie_session_safe_requests_do_not_require_csrf_header() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            client.cookies.set(SESSION_COOKIE_NAME, FAKE_BROWSER_SESSION_VALUE)
+            response = await client.get(
+                "/v1/me/profile",
+            )
+
+        assert response.status_code == 200
+        assert response.json()["email"] == "user@example.test"
+
+    anyio.run(run)
+
+
+def test_cookie_session_mutations_require_matching_csrf_header() -> None:
+    async def run() -> None:
+        app = await build_identity_app()
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            client.cookies.set(SESSION_COOKIE_NAME, FAKE_BROWSER_SESSION_VALUE)
+            client.cookies.set(CSRF_COOKIE_NAME, "csrf-token")
+            missing = await client.patch(
+                "/v1/me/profile",
+                json={
+                    "email": "user@example.test",
+                    "name": "Ada Byron",
+                    "organization": "Difference Guild",
+                },
+            )
+            mismatch = await client.patch(
+                "/v1/me/profile",
+                headers={CSRF_HEADER_NAME: "wrong-token"},
+                json={
+                    "email": "user@example.test",
+                    "name": "Ada Byron",
+                    "organization": "Difference Guild",
+                },
+            )
+            accepted = await client.patch(
+                "/v1/me/profile",
+                headers={CSRF_HEADER_NAME: "csrf-token"},
+                json={
+                    "email": "user@example.test",
+                    "name": "Ada Byron",
+                    "organization": "Difference Guild",
+                },
+            )
+
+        assert missing.status_code == 403
+        assert missing.json()["detail"] == "CSRF token is missing or invalid."
+        assert mismatch.status_code == 403
+        assert accepted.status_code == 200
+        assert accepted.json()["name"] == "Ada Byron"
 
     anyio.run(run)
 
