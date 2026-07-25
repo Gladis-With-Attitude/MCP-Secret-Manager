@@ -15,6 +15,7 @@ export default defineConfig({
       NEXT_PUBLIC_API_BASE_URL: "http://api.example.test",
       NEXT_PUBLIC_APP_ENV: "test",
     },
+    exclude: ["e2e/**", "node_modules/**", "dist/**", ".next/**"],
     globals: true,
     setupFiles: ["./tests/setup.ts"],
   },
