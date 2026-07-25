@@ -7,23 +7,41 @@ from typing import ClassVar
 from application.audit.dto import AuditContext
 from application.audit.use_cases import NoopAuditRecorder, record_audit_event
 from application.identity.dto import (
+    AccountSecurityResponse,
+    ActiveSessionListResponse,
+    ActiveSessionResponse,
     ApiKeyCreatedResponse,
     ApiKeyListResponse,
     ApiKeyPaginationResponse,
     ApiKeyPermissionsResponse,
     ApiKeyResponse,
     AuthenticatedIdentityResponse,
+    ChangePasswordRequest,
     CreateApiKeyRequest,
     CreateServiceAccountRequest,
     CreateSessionRequest,
     CreateUserRequest,
     CurrentSessionResponse,
     GetApiKeyRequest,
+    GetProfileRequest,
+    GetSettingsRequest,
+    ListActiveSessionsRequest,
     ListApiKeysRequest,
+    NotificationPreferencesResponse,
+    ProfilePermissionsResponse,
+    PublicSettingsResponse,
     RevokeApiKeyRequest,
+    RevokeSessionRequest,
     ServiceAccountResponse,
     SessionCreatedResponse,
+    SettingsPermissionsResponse,
+    SettingsResponse,
     UpdateApiKeyRequest,
+    UpdateNotificationsRequest,
+    UpdatePreferencesRequest,
+    UpdateProfileRequest,
+    UserPreferencesResponse,
+    UserProfileResponse,
     UserResponse,
 )
 from application.identity.exceptions import (
@@ -36,7 +54,7 @@ from application.identity.unit_of_work import IdentityUnitOfWork
 from application.observability import log_application_event
 from domain.audit.repositories import AuditRecorder
 from domain.audit.value_objects import AuditResult
-from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User, UserPreferences
 from domain.identity.exceptions import IdentityDomainError
 from domain.identity.repositories import (
     ApiKeyRepositoryConflictError,
@@ -813,6 +831,283 @@ class RevokeCurrentSessionUseCase:
         )
 
 
+class GetCurrentProfileUseCase:
+    def __init__(self, unit_of_work: IdentityUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(self, request: GetProfileRequest) -> UserProfileResponse:
+        identity_type = _validate_owner_type(request.identity_type)
+        identity_id = _validate_owner_id(request.identity_id, identity_type)
+        async with self._unit_of_work as unit_of_work:
+            response = await _build_profile_response(unit_of_work, identity_id, identity_type)
+            await unit_of_work.commit()
+            return response
+
+
+class UpdateCurrentProfileUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(self, request: UpdateProfileRequest) -> UserProfileResponse:
+        identity_type = _validate_owner_type(request.identity_type)
+        identity_id = _validate_owner_id(request.identity_id, identity_type)
+        if identity_type is not ApiKeyOwnerType.USER or not isinstance(identity_id, UserId):
+            raise IdentityValidationError("Only user profiles can be updated.")
+        display_name = _validate_display_name(request.name)
+        organization = _validate_optional_text(
+            request.organization,
+            field_name="Organization",
+            max_length=120,
+        )
+
+        async with self._unit_of_work as unit_of_work:
+            user = await unit_of_work.users.get(identity_id)
+            if user is None or user.status is not IdentityStatus.ACTIVE:
+                raise IdentityNotFoundError("Profile not found.")
+            if request.email is not None and _validate_email(request.email) != user.email:
+                raise IdentityValidationError("User email cannot be changed from profile settings.")
+            await unit_of_work.users.update(user.update_display_name(display_name))
+            preferences = await _get_or_create_preferences(unit_of_work, identity_id)
+            await unit_of_work.user_preferences.upsert(
+                preferences.update_profile_metadata(organization=organization)
+            )
+            await unit_of_work.commit()
+            response = await _build_profile_response(unit_of_work, identity_id, identity_type)
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="profile.update",
+            resource_type="user",
+            resource_id=request.identity_id,
+            result=AuditResult.SUCCESS,
+        )
+        return response
+
+
+class GetAccountSecurityUseCase:
+    async def execute(self) -> AccountSecurityResponse:
+        return AccountSecurityResponse(
+            mfa_enabled=False,
+            passkeys_enabled=False,
+            password_change_available=False,
+            recovery_keys_available=False,
+            webauthn_enabled=False,
+        )
+
+
+class ListActiveSessionsUseCase:
+    def __init__(self, unit_of_work: IdentityUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    async def execute(self, request: ListActiveSessionsRequest) -> ActiveSessionListResponse:
+        identity_type = _validate_owner_type(request.identity_type)
+        identity_id = _validate_owner_id(request.identity_id, identity_type)
+        async with self._unit_of_work as unit_of_work:
+            sessions = await unit_of_work.auth_sessions.list_for_owner(
+                identity_id,
+                identity_type,
+            )
+        return ActiveSessionListResponse(
+            data=tuple(
+                ActiveSessionResponse.from_domain(
+                    session,
+                    current_session_id=request.current_session_id,
+                )
+                for session in sessions
+            ),
+            permissions=_profile_permissions(),
+        )
+
+
+class RevokeSessionUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(self, request: RevokeSessionRequest) -> None:
+        identity_type = _validate_owner_type(request.identity_type)
+        identity_id = _validate_owner_id(request.identity_id, identity_type)
+        try:
+            session_id = SessionId.from_string(request.session_id)
+        except ValueError as exc:
+            raise IdentityValidationError("Session id must be a valid UUID.") from exc
+
+        async with self._unit_of_work as unit_of_work:
+            auth_session = await unit_of_work.auth_sessions.get(session_id)
+            if auth_session is None:
+                raise IdentityNotFoundError("Session not found.")
+            if auth_session.owner_id != identity_id or auth_session.owner_type is not identity_type:
+                raise IdentityNotFoundError("Session not found.")
+            if auth_session.revoked_at is None:
+                revoked = auth_session.revoke()
+                await unit_of_work.auth_sessions.update(revoked)
+                await unit_of_work.commit()
+            else:
+                revoked = auth_session
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="session.revoke",
+            resource_type="auth_session",
+            resource_id=str(revoked.id),
+            result=AuditResult.SUCCESS,
+        )
+
+
+class ChangePasswordUseCase:
+    async def execute(self, request: ChangePasswordRequest) -> None:
+        _validate_owner_type(request.identity_type)
+        if not request.current_password or not request.new_password:
+            raise IdentityValidationError("Password data is required.")
+        raise IdentityValidationError("Password authentication is not configured.")
+
+
+class GetSettingsUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        *,
+        service_name: str = "mcp-secret-manager",
+        environment: str | None = None,
+        backend_version: str | None = "0.1.0",
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._service_name = service_name
+        self._environment = environment
+        self._backend_version = backend_version
+
+    async def execute(self, request: GetSettingsRequest) -> SettingsResponse:
+        identity_type = _validate_owner_type(request.identity_type)
+        identity_id = _validate_owner_id(request.identity_id, identity_type)
+        if identity_type is not ApiKeyOwnerType.USER or not isinstance(identity_id, UserId):
+            preferences = UserPreferences.default(UserId.new())
+            return _settings_response(
+                preferences,
+                service_name=self._service_name,
+                environment=self._environment,
+                backend_version=self._backend_version,
+                editable=False,
+            )
+
+        async with self._unit_of_work as unit_of_work:
+            preferences = await _get_or_create_preferences(unit_of_work, identity_id)
+            await unit_of_work.commit()
+        return _settings_response(
+            preferences,
+            service_name=self._service_name,
+            environment=self._environment,
+            backend_version=self._backend_version,
+            editable=True,
+        )
+
+
+class UpdatePreferencesUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(self, request: UpdatePreferencesRequest) -> UserPreferencesResponse:
+        identity_type = _validate_owner_type(request.identity_type)
+        identity_id = _validate_owner_id(request.identity_id, identity_type)
+        if identity_type is not ApiKeyOwnerType.USER or not isinstance(identity_id, UserId):
+            raise IdentityValidationError("Only user preferences can be updated.")
+        theme = _validate_choice(request.theme, {"light", "dark", "system"}, "Theme")
+        language = _validate_choice(request.language, {"en", "fr"}, "Language")
+        date_time_format = _validate_choice(
+            request.date_time_format,
+            {"absolute", "relative", "short"},
+            "Date/time format",
+        )
+        display_density = _validate_choice(
+            request.display_density,
+            {"comfortable", "compact"},
+            "Display density",
+        )
+        timezone = _validate_optional_text(request.timezone, field_name="Timezone", max_length=80)
+        if timezone is None:
+            raise IdentityValidationError("Timezone is required.")
+
+        async with self._unit_of_work as unit_of_work:
+            preferences = await _get_or_create_preferences(unit_of_work, identity_id)
+            updated = await unit_of_work.user_preferences.upsert(
+                preferences.update_preferences(
+                    theme=theme,
+                    language=language,
+                    timezone=timezone,
+                    date_time_format=date_time_format,
+                    display_density=display_density,
+                )
+            )
+            await unit_of_work.commit()
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="settings.preferences.update",
+            resource_type="user_preferences",
+            resource_id=request.identity_id,
+            result=AuditResult.SUCCESS,
+        )
+        return UserPreferencesResponse.from_domain(updated)
+
+
+class UpdateNotificationsUseCase:
+    def __init__(
+        self,
+        unit_of_work: IdentityUnitOfWork,
+        audit_recorder: AuditRecorder | None = None,
+    ) -> None:
+        self._unit_of_work = unit_of_work
+        self._audit_recorder = audit_recorder or NoopAuditRecorder()
+
+    async def execute(
+        self,
+        request: UpdateNotificationsRequest,
+    ) -> NotificationPreferencesResponse:
+        identity_type = _validate_owner_type(request.identity_type)
+        identity_id = _validate_owner_id(request.identity_id, identity_type)
+        if identity_type is not ApiKeyOwnerType.USER or not isinstance(identity_id, UserId):
+            raise IdentityValidationError("Only user notifications can be updated.")
+
+        async with self._unit_of_work as unit_of_work:
+            preferences = await _get_or_create_preferences(unit_of_work, identity_id)
+            updated = await unit_of_work.user_preferences.upsert(
+                preferences.update_notifications(
+                    audit_alerts=request.audit_alerts,
+                    email_enabled=request.email_enabled,
+                    in_app_enabled=request.in_app_enabled,
+                    product_updates=request.product_updates,
+                    security_alerts=request.security_alerts,
+                )
+            )
+            await unit_of_work.commit()
+
+        await record_audit_event(
+            self._audit_recorder,
+            request.audit_context,
+            action="settings.notifications.update",
+            resource_type="user_preferences",
+            resource_id=request.identity_id,
+            result=AuditResult.SUCCESS,
+        )
+        return NotificationPreferencesResponse.from_domain(updated)
+
+
 async def build_current_session_response(
     unit_of_work: IdentityUnitOfWork,
     auth: AuthSession | ApiKey,
@@ -853,3 +1148,158 @@ async def build_current_session_response(
         name=service_account.name.value,
         profile_label="Service account",
     )
+
+
+async def _build_profile_response(
+    unit_of_work: IdentityUnitOfWork,
+    identity_id: UserId | ServiceAccountId,
+    identity_type: ApiKeyOwnerType,
+) -> UserProfileResponse:
+    if identity_type is ApiKeyOwnerType.USER:
+        if not isinstance(identity_id, UserId):
+            raise IdentityValidationError("Profile id must be a user id.")
+        user = await unit_of_work.users.get(identity_id)
+        if user is None or user.status is not IdentityStatus.ACTIVE:
+            raise IdentityNotFoundError("Profile not found.")
+        preferences = await _get_or_create_preferences(unit_of_work, identity_id)
+        return UserProfileResponse(
+            id=str(user.id),
+            email=user.email.value,
+            name=user.display_name.value,
+            account_type="human",
+            avatar_url=preferences.avatar_url,
+            organization=preferences.organization,
+            email_editable=False,
+            primary_role=None,
+            last_login_at=None,
+            created_at=user.created_at.isoformat(),
+            permissions=_profile_permissions(),
+        )
+
+    if not isinstance(identity_id, ServiceAccountId):
+        raise IdentityValidationError("Profile id must be a service account id.")
+    service_account = await unit_of_work.service_accounts.get(identity_id)
+    if service_account is None or service_account.status is not IdentityStatus.ACTIVE:
+        raise IdentityNotFoundError("Profile not found.")
+    return UserProfileResponse(
+        id=str(service_account.id),
+        email=None,
+        name=service_account.name.value,
+        account_type="service",
+        avatar_url=None,
+        organization=None,
+        email_editable=False,
+        primary_role=None,
+        last_login_at=None,
+        created_at=service_account.created_at.isoformat(),
+        permissions=ProfilePermissionsResponse(
+            change_password=False,
+            read=True,
+            revoke_sessions=False,
+            update=False,
+        ),
+    )
+
+
+async def _get_or_create_preferences(
+    unit_of_work: IdentityUnitOfWork,
+    user_id: UserId,
+) -> UserPreferences:
+    preferences = await unit_of_work.user_preferences.get(user_id)
+    if preferences is not None:
+        return preferences
+    return await unit_of_work.user_preferences.upsert(UserPreferences.default(user_id))
+
+
+def _profile_permissions() -> ProfilePermissionsResponse:
+    return ProfilePermissionsResponse(
+        change_password=False,
+        read=True,
+        revoke_sessions=True,
+        update=True,
+    )
+
+
+def _settings_response(
+    preferences: UserPreferences,
+    *,
+    service_name: str,
+    environment: str | None,
+    backend_version: str | None,
+    editable: bool,
+) -> SettingsResponse:
+    return SettingsResponse(
+        notifications=NotificationPreferencesResponse.from_domain(preferences),
+        permissions=SettingsPermissionsResponse(
+            read=True,
+            update=editable,
+            update_notifications=editable,
+            update_preferences=editable,
+        ),
+        preferences=UserPreferencesResponse.from_domain(preferences),
+        public_settings=PublicSettingsResponse(
+            api_status="healthy",
+            backend_version=backend_version,
+            deployment_mode=None,
+            environment=environment,
+            frontend_version=None,
+            instance_name=service_name,
+            public_url=None,
+        ),
+    )
+
+
+def _validate_owner_type(raw_owner_type: str) -> ApiKeyOwnerType:
+    try:
+        return ApiKeyOwnerType(raw_owner_type)
+    except ValueError as exc:
+        raise IdentityValidationError("Identity type is invalid.") from exc
+
+
+def _validate_owner_id(
+    raw_owner_id: str,
+    owner_type: ApiKeyOwnerType,
+) -> UserId | ServiceAccountId:
+    try:
+        if owner_type is ApiKeyOwnerType.USER:
+            return UserId.from_string(raw_owner_id)
+        return ServiceAccountId.from_string(raw_owner_id)
+    except ValueError as exc:
+        raise IdentityValidationError("Identity id must be a valid UUID.") from exc
+
+
+def _validate_display_name(raw_display_name: str) -> UserDisplayName:
+    try:
+        return UserDisplayName(raw_display_name)
+    except IdentityDomainError as exc:
+        raise IdentityValidationError(str(exc)) from exc
+
+
+def _validate_email(raw_email: str) -> UserEmail:
+    try:
+        return UserEmail(raw_email)
+    except IdentityDomainError as exc:
+        raise IdentityValidationError(str(exc)) from exc
+
+
+def _validate_optional_text(
+    raw_value: str | None,
+    *,
+    field_name: str,
+    max_length: int,
+) -> str | None:
+    if raw_value is None:
+        return None
+    value = raw_value.strip()
+    if not value:
+        return None
+    if len(value) > max_length:
+        raise IdentityValidationError(f"{field_name} must be {max_length} characters or fewer.")
+    return value
+
+
+def _validate_choice(raw_value: str, choices: set[str], field_name: str) -> str:
+    value = raw_value.strip().lower()
+    if value not in choices:
+        raise IdentityValidationError(f"{field_name} is invalid.")
+    return value

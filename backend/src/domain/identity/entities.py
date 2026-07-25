@@ -43,6 +43,121 @@ class User:
     def __hash__(self) -> int:
         return hash(self.id)
 
+    def update_display_name(self, display_name: UserDisplayName) -> User:
+        return User(
+            id=self.id,
+            email=self.email,
+            display_name=display_name,
+            status=self.status,
+            created_at=self.created_at,
+        )
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class UserPreferences:
+    user_id: UserId
+    organization: str | None
+    avatar_url: str | None
+    theme: str
+    language: str
+    timezone: str
+    date_time_format: str
+    display_density: str
+    audit_alerts: bool
+    email_enabled: bool
+    in_app_enabled: bool
+    product_updates: bool
+    security_alerts: bool
+
+    @classmethod
+    def default(cls, user_id: UserId) -> UserPreferences:
+        return cls(
+            user_id=user_id,
+            organization=None,
+            avatar_url=None,
+            theme="system",
+            language="en",
+            timezone="UTC",
+            date_time_format="absolute",
+            display_density="comfortable",
+            audit_alerts=True,
+            email_enabled=True,
+            in_app_enabled=True,
+            product_updates=False,
+            security_alerts=True,
+        )
+
+    def update_profile_metadata(
+        self,
+        *,
+        organization: str | None,
+    ) -> UserPreferences:
+        return UserPreferences(
+            user_id=self.user_id,
+            organization=organization,
+            avatar_url=self.avatar_url,
+            theme=self.theme,
+            language=self.language,
+            timezone=self.timezone,
+            date_time_format=self.date_time_format,
+            display_density=self.display_density,
+            audit_alerts=self.audit_alerts,
+            email_enabled=self.email_enabled,
+            in_app_enabled=self.in_app_enabled,
+            product_updates=self.product_updates,
+            security_alerts=self.security_alerts,
+        )
+
+    def update_preferences(
+        self,
+        *,
+        theme: str,
+        language: str,
+        timezone: str,
+        date_time_format: str,
+        display_density: str,
+    ) -> UserPreferences:
+        return UserPreferences(
+            user_id=self.user_id,
+            organization=self.organization,
+            avatar_url=self.avatar_url,
+            theme=theme,
+            language=language,
+            timezone=timezone,
+            date_time_format=date_time_format,
+            display_density=display_density,
+            audit_alerts=self.audit_alerts,
+            email_enabled=self.email_enabled,
+            in_app_enabled=self.in_app_enabled,
+            product_updates=self.product_updates,
+            security_alerts=self.security_alerts,
+        )
+
+    def update_notifications(
+        self,
+        *,
+        audit_alerts: bool,
+        email_enabled: bool,
+        in_app_enabled: bool,
+        product_updates: bool,
+        security_alerts: bool,
+    ) -> UserPreferences:
+        return UserPreferences(
+            user_id=self.user_id,
+            organization=self.organization,
+            avatar_url=self.avatar_url,
+            theme=self.theme,
+            language=self.language,
+            timezone=self.timezone,
+            date_time_format=self.date_time_format,
+            display_density=self.display_density,
+            audit_alerts=audit_alerts,
+            email_enabled=email_enabled,
+            in_app_enabled=in_app_enabled,
+            product_updates=product_updates,
+            security_alerts=security_alerts,
+        )
+
 
 @dataclass(frozen=True, slots=True, eq=False)
 class ServiceAccount:

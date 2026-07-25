@@ -9,11 +9,13 @@ from infrastructure.persistence.identity_models import (
     AuthSessionModel,
     ServiceAccountModel,
     UserModel,
+    UserPreferencesModel,
 )
 from infrastructure.persistence.identity_repositories import (
     SqlAlchemyApiKeyRepository,
     SqlAlchemyAuthSessionRepository,
     SqlAlchemyServiceAccountRepository,
+    SqlAlchemyUserPreferencesRepository,
     SqlAlchemyUserRepository,
 )
 from infrastructure.persistence.project_model import ProjectModel
@@ -61,9 +63,11 @@ __all__ = [
     "SqlAlchemySecretVersionRepository",
     "SqlAlchemyServiceAccountRepository",
     "SqlAlchemyUnitOfWork",
+    "SqlAlchemyUserPreferencesRepository",
     "SqlAlchemyUserRepository",
     "SqlAlchemyVaultRepository",
     "UserModel",
+    "UserPreferencesModel",
     "VaultModel",
     "create_database_engine",
     "create_session_factory",

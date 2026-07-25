@@ -10,6 +10,7 @@ from domain.identity.repositories import (
     ApiKeyRepository,
     AuthSessionRepository,
     ServiceAccountRepository,
+    UserPreferencesRepository,
     UserRepository,
 )
 from domain.project.repositories import ProjectRepository
@@ -22,6 +23,7 @@ from infrastructure.persistence.identity_repositories import (
     SqlAlchemyApiKeyRepository,
     SqlAlchemyAuthSessionRepository,
     SqlAlchemyServiceAccountRepository,
+    SqlAlchemyUserPreferencesRepository,
     SqlAlchemyUserRepository,
 )
 from infrastructure.persistence.project_repository import SqlAlchemyProjectRepository
@@ -44,6 +46,7 @@ class SqlAlchemyUnitOfWork:
         self._secrets: SqlAlchemySecretRepository | None = None
         self._secret_versions: SqlAlchemySecretVersionRepository | None = None
         self._users: SqlAlchemyUserRepository | None = None
+        self._user_preferences: SqlAlchemyUserPreferencesRepository | None = None
         self._service_accounts: SqlAlchemyServiceAccountRepository | None = None
         self._api_keys: SqlAlchemyApiKeyRepository | None = None
         self._auth_sessions: SqlAlchemyAuthSessionRepository | None = None
@@ -81,6 +84,12 @@ class SqlAlchemyUnitOfWork:
         if self._users is None:
             raise RuntimeError("Unit of Work has not been entered.")
         return self._users
+
+    @property
+    def user_preferences(self) -> UserPreferencesRepository:
+        if self._user_preferences is None:
+            raise RuntimeError("Unit of Work has not been entered.")
+        return self._user_preferences
 
     @property
     def service_accounts(self) -> ServiceAccountRepository:
@@ -131,6 +140,7 @@ class SqlAlchemyUnitOfWork:
         self._secrets = SqlAlchemySecretRepository(self._session)
         self._secret_versions = SqlAlchemySecretVersionRepository(self._session)
         self._users = SqlAlchemyUserRepository(self._session)
+        self._user_preferences = SqlAlchemyUserPreferencesRepository(self._session)
         self._service_accounts = SqlAlchemyServiceAccountRepository(self._session)
         self._api_keys = SqlAlchemyApiKeyRepository(self._session)
         self._auth_sessions = SqlAlchemyAuthSessionRepository(self._session)
@@ -168,6 +178,7 @@ class SqlAlchemyUnitOfWork:
         self._secrets = None
         self._secret_versions = None
         self._users = None
+        self._user_preferences = None
         self._service_accounts = None
         self._api_keys = None
         self._auth_sessions = None

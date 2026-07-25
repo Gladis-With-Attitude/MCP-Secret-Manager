@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User, UserPreferences
 from domain.identity.repositories import (
     ApiKeyRepositoryConflictError,
     AuthSessionRepositoryConflictError,
@@ -16,6 +16,7 @@ from domain.identity.repositories import (
 )
 from domain.identity.value_objects import (
     ApiKeyId,
+    ApiKeyOwnerType,
     ServiceAccountId,
     ServiceAccountName,
     SessionId,
@@ -28,6 +29,7 @@ from infrastructure.persistence.identity_models import (
     AuthSessionModel,
     ServiceAccountModel,
     UserModel,
+    UserPreferencesModel,
 )
 
 
@@ -54,6 +56,55 @@ class SqlAlchemyUserRepository:
         model = await self._session.scalar(select(UserModel).where(UserModel.email == email.value))
         if model is None:
             return None
+        return model.to_domain()
+
+    async def update(self, user: User) -> User:
+        model = await self._session.get(UserModel, user.id.value)
+        if model is None:
+            raise UserRepositoryConflictError("User was not found.")
+        model.email = user.email.value
+        model.display_name = user.display_name.value
+        model.status = user.status.value
+        model.created_at = user.created_at
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise UserRepositoryConflictError("User persistence conflict.") from exc
+        return model.to_domain()
+
+
+class SqlAlchemyUserPreferencesRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get(self, user_id: UserId) -> UserPreferences | None:
+        model = await self._session.get(UserPreferencesModel, user_id.value)
+        if model is None:
+            return None
+        return model.to_domain()
+
+    async def upsert(self, preferences: UserPreferences) -> UserPreferences:
+        model = await self._session.get(UserPreferencesModel, preferences.user_id.value)
+        if model is None:
+            model = UserPreferencesModel.from_domain(preferences)
+            self._session.add(model)
+        else:
+            model.organization = preferences.organization
+            model.avatar_url = preferences.avatar_url
+            model.theme = preferences.theme
+            model.language = preferences.language
+            model.timezone = preferences.timezone
+            model.date_time_format = preferences.date_time_format
+            model.display_density = preferences.display_density
+            model.audit_alerts = preferences.audit_alerts
+            model.email_enabled = preferences.email_enabled
+            model.in_app_enabled = preferences.in_app_enabled
+            model.product_updates = preferences.product_updates
+            model.security_alerts = preferences.security_alerts
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            raise UserRepositoryConflictError("UserPreferences persistence conflict.") from exc
         return model.to_domain()
 
 
@@ -234,6 +285,31 @@ class SqlAlchemyAuthSessionRepository:
         if model is None:
             return None
         return model.to_domain()
+
+    async def list_for_owner(
+        self,
+        owner_id: UserId | ServiceAccountId,
+        owner_type: ApiKeyOwnerType,
+        now: datetime | None = None,
+    ) -> tuple[AuthSession, ...]:
+        effective_now = now or datetime.now(UTC)
+        result = await self._session.scalars(
+            select(AuthSessionModel)
+            .where(
+                AuthSessionModel.owner_id == owner_id.value,
+                AuthSessionModel.owner_type == owner_type.value,
+                AuthSessionModel.revoked_at.is_(None),
+                or_(
+                    AuthSessionModel.expires_at.is_(None),
+                    AuthSessionModel.expires_at > effective_now,
+                ),
+            )
+            .order_by(
+                AuthSessionModel.last_seen_at.desc().nullslast(),
+                AuthSessionModel.created_at.desc(),
+            )
+        )
+        return tuple(model.to_domain() for model in result.all())
 
     async def update(self, auth_session: AuthSession) -> AuthSession:
         model = await self._session.get(AuthSessionModel, auth_session.id.value)

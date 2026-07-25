@@ -16,11 +16,22 @@ from application.identity.dto import (
     CreateSessionRequest,
     CreateUserRequest,
     GetApiKeyRequest,
+    GetProfileRequest,
+    GetSettingsRequest,
+    ListActiveSessionsRequest,
     ListApiKeysRequest,
     RevokeApiKeyRequest,
+    RevokeSessionRequest,
     UpdateApiKeyRequest,
+    UpdateNotificationsRequest,
+    UpdatePreferencesRequest,
+    UpdateProfileRequest,
 )
-from application.identity.exceptions import AuthenticationFailedError, IdentityNotFoundError
+from application.identity.exceptions import (
+    AuthenticationFailedError,
+    IdentityNotFoundError,
+    IdentityValidationError,
+)
 from application.identity.use_cases import (
     AuthenticateApiKeyUseCase,
     AuthenticateSessionUseCase,
@@ -29,18 +40,26 @@ from application.identity.use_cases import (
     CreateSessionUseCase,
     CreateUserUseCase,
     GetApiKeyUseCase,
+    GetCurrentProfileUseCase,
     GetCurrentSessionUseCase,
+    GetSettingsUseCase,
+    ListActiveSessionsUseCase,
     ListApiKeysUseCase,
     RevokeApiKeyUseCase,
     RevokeCurrentSessionUseCase,
+    RevokeSessionUseCase,
     UpdateApiKeyUseCase,
+    UpdateCurrentProfileUseCase,
+    UpdateNotificationsUseCase,
+    UpdatePreferencesUseCase,
 )
-from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User, UserPreferences
 from domain.identity.repositories import (
     ApiKeyRepositoryConflictError,
     AuthSessionRepositoryConflictError,
     ServiceAccountRepository,
     ServiceAccountRepositoryConflictError,
+    UserPreferencesRepository,
     UserRepository,
     UserRepositoryConflictError,
 )
@@ -85,6 +104,24 @@ class InMemoryUserRepository:
 
     async def get_by_email(self, email: UserEmail) -> User | None:
         return next((user for user in self._users.values() if user.email == email), None)
+
+    async def update(self, user: User) -> User:
+        if user.id not in self._users:
+            raise UserRepositoryConflictError("User was not found.")
+        self._users[user.id] = user
+        return user
+
+
+class InMemoryUserPreferencesRepository:
+    def __init__(self) -> None:
+        self._preferences: dict[UserId, UserPreferences] = {}
+
+    async def get(self, user_id: UserId) -> UserPreferences | None:
+        return self._preferences.get(user_id)
+
+    async def upsert(self, preferences: UserPreferences) -> UserPreferences:
+        self._preferences[preferences.user_id] = preferences
+        return preferences
 
 
 class InMemoryServiceAccountRepository:
@@ -212,6 +249,22 @@ class InMemoryAuthSessionRepository:
                 if auth_session.token_prefix == token_prefix
             ),
             None,
+        )
+
+    async def list_for_owner(
+        self,
+        owner_id: UserId | ServiceAccountId,
+        owner_type: ApiKeyOwnerType,
+        now: datetime | None = None,
+    ) -> tuple[AuthSession, ...]:
+        effective_now = now or datetime.now(UTC)
+        return tuple(
+            auth_session
+            for auth_session in self._auth_sessions.values()
+            if auth_session.owner_id == owner_id
+            and auth_session.owner_type is owner_type
+            and not auth_session.is_revoked()
+            and not auth_session.is_expired(effective_now)
         )
 
     async def update(self, auth_session: AuthSession) -> AuthSession:
@@ -411,6 +464,7 @@ class InMemoryUnitOfWork:
         self._secrets = UnusedSecretRepository()
         self._secret_versions = UnusedSecretVersionRepository()
         self._users = InMemoryUserRepository()
+        self._user_preferences = InMemoryUserPreferencesRepository()
         self._service_accounts = InMemoryServiceAccountRepository()
         self._api_keys = InMemoryApiKeyRepository()
         self._auth_sessions = InMemoryAuthSessionRepository()
@@ -436,6 +490,10 @@ class InMemoryUnitOfWork:
     @property
     def users(self) -> UserRepository:
         return self._users
+
+    @property
+    def user_preferences(self) -> UserPreferencesRepository:
+        return self._user_preferences
 
     @property
     def service_accounts(self) -> ServiceAccountRepository:
@@ -980,5 +1038,145 @@ def test_authenticate_api_key_rejects_unknown_key() -> None:
                 FixedApiKeyGenerator(),
                 FakeApiKeyHasher(),
             ).execute(FixedApiKeyGenerator.raw_api_key)
+
+    anyio.run(run)
+
+
+def test_get_and_update_current_profile_persist_safe_user_metadata() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        user_id = await create_user(unit_of_work)
+
+        updated = await UpdateCurrentProfileUseCase(unit_of_work).execute(
+            UpdateProfileRequest(
+                identity_id=str(user_id),
+                identity_type=ApiKeyOwnerType.USER.value,
+                email="user@example.com",
+                name="Ada Byron",
+                organization="Analytical Engines",
+            )
+        )
+        fetched = await GetCurrentProfileUseCase(unit_of_work).execute(
+            GetProfileRequest(identity_id=str(user_id), identity_type=ApiKeyOwnerType.USER.value)
+        )
+
+        assert updated.name == "Ada Byron"
+        assert updated.organization == "Analytical Engines"
+        assert updated.email_editable is False
+        assert updated.permissions.update is True
+        assert fetched.name == "Ada Byron"
+        assert fetched.organization == "Analytical Engines"
+
+    anyio.run(run)
+
+
+def test_update_current_profile_rejects_email_changes() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        user_id = await create_user(unit_of_work)
+
+        with pytest.raises(IdentityValidationError, match="email cannot be changed"):
+            await UpdateCurrentProfileUseCase(unit_of_work).execute(
+                UpdateProfileRequest(
+                    identity_id=str(user_id),
+                    identity_type=ApiKeyOwnerType.USER.value,
+                    email="other@example.com",
+                    name="Ada Byron",
+                    organization=None,
+                )
+            )
+
+    anyio.run(run)
+
+
+def test_settings_preferences_and_notifications_round_trip() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        user_id = await create_user(unit_of_work)
+
+        settings = await GetSettingsUseCase(unit_of_work).execute(
+            GetSettingsRequest(identity_id=str(user_id), identity_type=ApiKeyOwnerType.USER.value)
+        )
+        preferences = await UpdatePreferencesUseCase(unit_of_work).execute(
+            UpdatePreferencesRequest(
+                identity_id=str(user_id),
+                identity_type=ApiKeyOwnerType.USER.value,
+                date_time_format="relative",
+                display_density="compact",
+                language="fr",
+                theme="dark",
+                timezone="Europe/Paris",
+            )
+        )
+        notifications = await UpdateNotificationsUseCase(unit_of_work).execute(
+            UpdateNotificationsRequest(
+                identity_id=str(user_id),
+                identity_type=ApiKeyOwnerType.USER.value,
+                audit_alerts=False,
+                email_enabled=False,
+                in_app_enabled=True,
+                product_updates=True,
+                security_alerts=True,
+            )
+        )
+        refreshed = await GetSettingsUseCase(unit_of_work).execute(
+            GetSettingsRequest(identity_id=str(user_id), identity_type=ApiKeyOwnerType.USER.value)
+        )
+
+        assert settings.preferences.theme == "system"
+        assert preferences.theme == "dark"
+        assert preferences.timezone == "Europe/Paris"
+        assert notifications.audit_alerts is False
+        assert refreshed.preferences.display_density == "compact"
+        assert refreshed.notifications.product_updates is True
+
+    anyio.run(run)
+
+
+def test_list_and_revoke_own_sessions_never_exposes_tokens() -> None:
+    async def run() -> None:
+        unit_of_work = InMemoryUnitOfWork()
+        raw_api_key = await create_api_key_for_user(unit_of_work)
+        created = await CreateSessionUseCase(
+            unit_of_work,
+            FixedApiKeyGenerator(),
+            FakeApiKeyHasher(),
+            FixedSessionTokenGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(CreateSessionRequest(api_key=raw_api_key))
+        authenticated = await AuthenticateSessionUseCase(
+            unit_of_work,
+            FixedSessionTokenGenerator(),
+            FakeApiKeyHasher(),
+        ).execute(created.session_token)
+
+        listed = await ListActiveSessionsUseCase(unit_of_work).execute(
+            ListActiveSessionsRequest(
+                identity_id=authenticated.id,
+                identity_type=authenticated.type,
+                current_session_id=authenticated.session_id,
+            )
+        )
+        assert listed.data[0].current is True
+        assert not hasattr(listed.data[0], "token")
+        assert FixedSessionTokenGenerator.raw_session_token not in repr(listed)
+
+        assert authenticated.session_id is not None
+        await RevokeSessionUseCase(unit_of_work).execute(
+            RevokeSessionRequest(
+                identity_id=authenticated.id,
+                identity_type=authenticated.type,
+                session_id=authenticated.session_id,
+                current_session_id=authenticated.session_id,
+            )
+        )
+        after_revoke = await ListActiveSessionsUseCase(unit_of_work).execute(
+            ListActiveSessionsRequest(
+                identity_id=authenticated.id,
+                identity_type=authenticated.type,
+                current_session_id=authenticated.session_id,
+            )
+        )
+        assert after_revoke.data == ()
 
     anyio.run(run)

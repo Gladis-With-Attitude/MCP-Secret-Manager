@@ -13,8 +13,16 @@ from application.identity.use_cases import (
     AuthenticateApiKeyUseCase,
     AuthenticateSessionUseCase,
     CreateSessionUseCase,
+    GetAccountSecurityUseCase,
+    GetCurrentProfileUseCase,
     GetCurrentSessionUseCase,
+    GetSettingsUseCase,
+    ListActiveSessionsUseCase,
     RevokeCurrentSessionUseCase,
+    RevokeSessionUseCase,
+    UpdateCurrentProfileUseCase,
+    UpdateNotificationsUseCase,
+    UpdatePreferencesUseCase,
 )
 from domain.identity.entities import ApiKey, User
 from domain.identity.value_objects import ApiKeyOwnerType, UserDisplayName, UserEmail
@@ -27,9 +35,17 @@ from infrastructure.persistence import Base, SqlAlchemyApiKeyRepository, SqlAlch
 from infrastructure.persistence.identity_repositories import SqlAlchemyUserRepository
 from presentation.rest.app import create_app
 from presentation.rest.dependencies import (
+    get_account_security_use_case,
     get_create_session_use_case,
+    get_current_profile_use_case,
     get_current_session_use_case,
+    get_list_active_sessions_use_case,
     get_revoke_current_session_use_case,
+    get_revoke_session_use_case,
+    get_settings_use_case,
+    get_update_current_profile_use_case,
+    get_update_notifications_use_case,
+    get_update_preferences_use_case,
 )
 
 TEST_SCHEMA = "mcp_secret_manager_auth_session_flow_test"
@@ -136,6 +152,38 @@ async def create_authenticated_session_client(
             audit_recorder=audit_recorder,
         )
     )
+    app.dependency_overrides[get_current_profile_use_case] = lambda: GetCurrentProfileUseCase(
+        SqlAlchemyUnitOfWork(session_factory)
+    )
+    app.dependency_overrides[get_update_current_profile_use_case] = lambda: (
+        UpdateCurrentProfileUseCase(
+            SqlAlchemyUnitOfWork(session_factory),
+            audit_recorder=audit_recorder,
+        )
+    )
+    app.dependency_overrides[get_account_security_use_case] = lambda: GetAccountSecurityUseCase()
+    app.dependency_overrides[get_list_active_sessions_use_case] = lambda: ListActiveSessionsUseCase(
+        SqlAlchemyUnitOfWork(session_factory)
+    )
+    app.dependency_overrides[get_revoke_session_use_case] = lambda: RevokeSessionUseCase(
+        SqlAlchemyUnitOfWork(session_factory),
+        audit_recorder=audit_recorder,
+    )
+    app.dependency_overrides[get_settings_use_case] = lambda: GetSettingsUseCase(
+        SqlAlchemyUnitOfWork(session_factory),
+        service_name="test-service",
+        environment="test",
+    )
+    app.dependency_overrides[get_update_preferences_use_case] = lambda: UpdatePreferencesUseCase(
+        SqlAlchemyUnitOfWork(session_factory),
+        audit_recorder=audit_recorder,
+    )
+    app.dependency_overrides[get_update_notifications_use_case] = lambda: (
+        UpdateNotificationsUseCase(
+            SqlAlchemyUnitOfWork(session_factory),
+            audit_recorder=audit_recorder,
+        )
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -158,6 +206,41 @@ async def test_api_key_session_browser_to_postgres_flow(
         assert response.json()["auth_method"] == "api_key"
         assert response.json()["user"]["email"] == "session.operator@example.test"
         assert response.json()["user"]["name"] == "Session Operator"
+
+        profile = await client.patch(
+            "/v1/me/profile",
+            json={
+                "email": "session.operator@example.test",
+                "name": "Session Operator Updated",
+                "organization": "Operations",
+            },
+        )
+        assert profile.status_code == 200
+        assert profile.json()["name"] == "Session Operator Updated"
+        assert profile.json()["organization"] == "Operations"
+        assert "api_key" not in profile.text
+
+        preferences = await client.patch(
+            "/v1/me/preferences",
+            json={
+                "date_time_format": "relative",
+                "display_density": "compact",
+                "language": "fr",
+                "theme": "dark",
+                "timezone": "Europe/Paris",
+            },
+        )
+        assert preferences.status_code == 200
+        assert preferences.json()["theme"] == "dark"
+
+        settings = await client.get("/v1/me/settings")
+        assert settings.status_code == 200
+        assert settings.json()["preferences"]["timezone"] == "Europe/Paris"
+
+        sessions = await client.get("/v1/me/sessions")
+        assert sessions.status_code == 200
+        assert sessions.json()["data"][0]["current"] is True
+        assert "mcp_sm_session_" not in sessions.text
 
         revoked = await client.delete("/v1/auth/session")
         assert revoked.status_code == 204

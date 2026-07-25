@@ -17,6 +17,7 @@ from infrastructure.seed.orchestrator import SeedOrchestrator
 from infrastructure.seed.settings import SeedSettings
 
 ADMIN_API_KEY = "mcp_sm_0123456789abcdef_" + ("a" * 64)
+HEAD_REVISION = "0014_create_user_preferences"
 
 
 def quote_identifier(value: str) -> str:
@@ -121,7 +122,7 @@ def test_seed_bootstrap_is_idempotent_on_postgresql_database(
         )
         assert (
             asyncio.run(scalar(seeded_database_url, "SELECT version_num FROM alembic_version"))
-            == "0013_add_api_key_metadata"
+            == HEAD_REVISION
         )
     finally:
         asyncio.run(drop_database(database_url, database_name))

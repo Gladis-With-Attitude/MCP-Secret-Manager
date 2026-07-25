@@ -7,6 +7,7 @@ from domain.identity.repositories import (
     ApiKeyRepository,
     AuthSessionRepository,
     ServiceAccountRepository,
+    UserPreferencesRepository,
     UserRepository,
 )
 from domain.project.repositories import ProjectRepository
@@ -19,6 +20,10 @@ class IdentityUnitOfWork(Protocol):
 
     @property
     def users(self) -> UserRepository:
+        raise NotImplementedError
+
+    @property
+    def user_preferences(self) -> UserPreferencesRepository:
         raise NotImplementedError
 
     @property

@@ -4,12 +4,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from application.audit.dto import AuditEventResponse
 from application.identity.dto import (
+    AccountSecurityResponse,
+    ActiveSessionListResponse,
+    ActiveSessionResponse,
     ApiKeyCreatedResponse,
     ApiKeyListResponse,
     ApiKeyPermissionsResponse,
     ApiKeyResponse,
     CurrentSessionResponse,
+    NotificationPreferencesResponse,
+    ProfilePermissionsResponse,
+    PublicSettingsResponse,
     ServiceAccountResponse,
+    SettingsPermissionsResponse,
+    SettingsResponse,
+    UserPreferencesResponse,
+    UserProfileResponse,
     UserResponse,
 )
 from application.project.dto import ProjectListResponse, ProjectResponse
@@ -608,6 +618,245 @@ class CurrentSessionHttpResponse(BaseModel):
                 profile_label=response.profile_label,
             ),
         )
+
+
+class UpdateProfileHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str | None = None
+    name: str
+    organization: str | None = None
+
+
+class ChangePasswordHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str
+    new_password: str
+
+
+class ProfilePermissionHttpResponse(BaseModel):
+    change_password: bool
+    read: bool
+    revoke_sessions: bool
+    update: bool
+
+    @classmethod
+    def from_application(
+        cls,
+        response: ProfilePermissionsResponse,
+    ) -> ProfilePermissionHttpResponse:
+        return cls(
+            change_password=response.change_password,
+            read=response.read,
+            revoke_sessions=response.revoke_sessions,
+            update=response.update,
+        )
+
+
+class UserProfileHttpResponse(BaseModel):
+    account_type: str
+    avatar_url: str | None
+    created_at: str | None
+    email: str | None
+    email_editable: bool
+    id: str
+    last_login_at: str | None
+    name: str
+    organization: str | None
+    permissions: ProfilePermissionHttpResponse
+    primary_role: str | None
+
+    @classmethod
+    def from_application(cls, response: UserProfileResponse) -> UserProfileHttpResponse:
+        return cls(
+            account_type=response.account_type,
+            avatar_url=response.avatar_url,
+            created_at=response.created_at,
+            email=response.email,
+            email_editable=response.email_editable,
+            id=response.id,
+            last_login_at=response.last_login_at,
+            name=response.name,
+            organization=response.organization,
+            permissions=ProfilePermissionHttpResponse.from_application(response.permissions),
+            primary_role=response.primary_role,
+        )
+
+
+class AccountSecurityHttpResponse(BaseModel):
+    mfa_enabled: bool
+    passkeys_enabled: bool
+    password_change_available: bool
+    recovery_keys_available: bool
+    webauthn_enabled: bool
+
+    @classmethod
+    def from_application(cls, response: AccountSecurityResponse) -> AccountSecurityHttpResponse:
+        return cls(
+            mfa_enabled=response.mfa_enabled,
+            passkeys_enabled=response.passkeys_enabled,
+            password_change_available=response.password_change_available,
+            recovery_keys_available=response.recovery_keys_available,
+            webauthn_enabled=response.webauthn_enabled,
+        )
+
+
+class ActiveSessionHttpResponse(BaseModel):
+    current: bool
+    device: str | None
+    expires_at: str | None
+    id: str
+    ip_address: str | None
+    last_seen_at: str | None
+    location: str | None
+    user_agent: str | None
+
+    @classmethod
+    def from_application(cls, response: ActiveSessionResponse) -> ActiveSessionHttpResponse:
+        return cls(
+            current=response.current,
+            device=response.device,
+            expires_at=response.expires_at,
+            id=response.id,
+            ip_address=response.ip_address,
+            last_seen_at=response.last_seen_at,
+            location=response.location,
+            user_agent=response.user_agent,
+        )
+
+
+class ActiveSessionListHttpResponse(BaseModel):
+    data: list[ActiveSessionHttpResponse]
+    permissions: ProfilePermissionHttpResponse
+
+    @classmethod
+    def from_application(
+        cls,
+        response: ActiveSessionListResponse,
+    ) -> ActiveSessionListHttpResponse:
+        return cls(
+            data=[ActiveSessionHttpResponse.from_application(item) for item in response.data],
+            permissions=ProfilePermissionHttpResponse.from_application(response.permissions),
+        )
+
+
+class UserPreferencesHttpResponse(BaseModel):
+    date_time_format: str
+    display_density: str
+    language: str
+    theme: str
+    timezone: str
+
+    @classmethod
+    def from_application(cls, response: UserPreferencesResponse) -> UserPreferencesHttpResponse:
+        return cls(
+            date_time_format=response.date_time_format,
+            display_density=response.display_density,
+            language=response.language,
+            theme=response.theme,
+            timezone=response.timezone,
+        )
+
+
+class NotificationPreferencesHttpResponse(BaseModel):
+    audit_alerts: bool
+    email_enabled: bool
+    in_app_enabled: bool
+    product_updates: bool
+    security_alerts: bool
+
+    @classmethod
+    def from_application(
+        cls,
+        response: NotificationPreferencesResponse,
+    ) -> NotificationPreferencesHttpResponse:
+        return cls(
+            audit_alerts=response.audit_alerts,
+            email_enabled=response.email_enabled,
+            in_app_enabled=response.in_app_enabled,
+            product_updates=response.product_updates,
+            security_alerts=response.security_alerts,
+        )
+
+
+class PublicSettingsHttpResponse(BaseModel):
+    api_status: str
+    backend_version: str | None
+    deployment_mode: str | None
+    environment: str | None
+    frontend_version: str | None
+    instance_name: str | None
+    public_url: str | None
+
+    @classmethod
+    def from_application(cls, response: PublicSettingsResponse) -> PublicSettingsHttpResponse:
+        return cls(
+            api_status=response.api_status,
+            backend_version=response.backend_version,
+            deployment_mode=response.deployment_mode,
+            environment=response.environment,
+            frontend_version=response.frontend_version,
+            instance_name=response.instance_name,
+            public_url=response.public_url,
+        )
+
+
+class SettingsPermissionHttpResponse(BaseModel):
+    read: bool
+    update: bool
+    update_notifications: bool
+    update_preferences: bool
+
+    @classmethod
+    def from_application(
+        cls,
+        response: SettingsPermissionsResponse,
+    ) -> SettingsPermissionHttpResponse:
+        return cls(
+            read=response.read,
+            update=response.update,
+            update_notifications=response.update_notifications,
+            update_preferences=response.update_preferences,
+        )
+
+
+class SettingsHttpResponse(BaseModel):
+    notifications: NotificationPreferencesHttpResponse
+    permissions: SettingsPermissionHttpResponse
+    preferences: UserPreferencesHttpResponse
+    public_settings: PublicSettingsHttpResponse
+
+    @classmethod
+    def from_application(cls, response: SettingsResponse) -> SettingsHttpResponse:
+        return cls(
+            notifications=NotificationPreferencesHttpResponse.from_application(
+                response.notifications
+            ),
+            permissions=SettingsPermissionHttpResponse.from_application(response.permissions),
+            preferences=UserPreferencesHttpResponse.from_application(response.preferences),
+            public_settings=PublicSettingsHttpResponse.from_application(response.public_settings),
+        )
+
+
+class UpdatePreferencesHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date_time_format: str
+    display_density: str
+    language: str
+    theme: str
+    timezone: str
+
+
+class UpdateNotificationsHttpRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    audit_alerts: bool
+    email_enabled: bool
+    in_app_enabled: bool
+    product_updates: bool
+    security_alerts: bool
 
 
 class CreateRoleHttpRequest(BaseModel):

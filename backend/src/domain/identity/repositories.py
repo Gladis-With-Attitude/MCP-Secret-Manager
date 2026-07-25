@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol
 
-from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User, UserPreferences
 from domain.identity.value_objects import (
     ApiKeyId,
+    ApiKeyOwnerType,
     ServiceAccountId,
     ServiceAccountName,
     SessionId,
@@ -39,6 +40,17 @@ class UserRepository(Protocol):
         raise NotImplementedError
 
     async def get_by_email(self, email: UserEmail) -> User | None:
+        raise NotImplementedError
+
+    async def update(self, user: User) -> User:
+        raise NotImplementedError
+
+
+class UserPreferencesRepository(Protocol):
+    async def get(self, user_id: UserId) -> UserPreferences | None:
+        raise NotImplementedError
+
+    async def upsert(self, preferences: UserPreferences) -> UserPreferences:
         raise NotImplementedError
 
 
@@ -95,6 +107,14 @@ class AuthSessionRepository(Protocol):
         raise NotImplementedError
 
     async def get_by_prefix(self, token_prefix: str) -> AuthSession | None:
+        raise NotImplementedError
+
+    async def list_for_owner(
+        self,
+        owner_id: UserId | ServiceAccountId,
+        owner_type: ApiKeyOwnerType,
+        now: datetime | None = None,
+    ) -> tuple[AuthSession, ...]:
         raise NotImplementedError
 
     async def update(self, session: AuthSession) -> AuthSession:

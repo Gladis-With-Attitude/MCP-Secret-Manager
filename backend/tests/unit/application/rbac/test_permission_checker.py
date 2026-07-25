@@ -216,6 +216,10 @@ class InMemoryUserRepository:
     async def get_by_email(self, email: UserEmail) -> User | None:
         return next((user for user in self._users.values() if user.email == email), None)
 
+    async def update(self, user: User) -> User:
+        self._users[user.id] = user
+        return user
+
 
 class EmptyServiceAccountRepository:
     async def create(self, service_account: ServiceAccount) -> ServiceAccount:

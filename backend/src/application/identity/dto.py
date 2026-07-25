@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from application.audit.dto import AuditContext
-from domain.identity.entities import ApiKey, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User, UserPreferences
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,3 +238,209 @@ class CurrentSessionResponse:
     email: str | None
     name: str
     profile_label: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProfilePermissionsResponse:
+    change_password: bool
+    read: bool
+    revoke_sessions: bool
+    update: bool
+
+
+@dataclass(frozen=True, slots=True)
+class UserProfileResponse:
+    id: str
+    email: str | None
+    name: str
+    account_type: str
+    avatar_url: str | None
+    organization: str | None
+    email_editable: bool
+    primary_role: str | None
+    last_login_at: str | None
+    created_at: str | None
+    permissions: ProfilePermissionsResponse
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateProfileRequest:
+    identity_id: str
+    identity_type: str
+    name: str
+    email: str | None = None
+    organization: str | None = None
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GetProfileRequest:
+    identity_id: str
+    identity_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class AccountSecurityResponse:
+    mfa_enabled: bool
+    passkeys_enabled: bool
+    password_change_available: bool
+    recovery_keys_available: bool
+    webauthn_enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveSessionResponse:
+    id: str
+    current: bool
+    device: str | None
+    expires_at: str | None
+    ip_address: str | None
+    last_seen_at: str | None
+    location: str | None
+    user_agent: str | None
+
+    @classmethod
+    def from_domain(
+        cls,
+        session: AuthSession,
+        *,
+        current_session_id: str | None,
+    ) -> ActiveSessionResponse:
+        return cls(
+            id=str(session.id),
+            current=current_session_id == str(session.id),
+            device=None,
+            expires_at=session.expires_at.isoformat() if session.expires_at is not None else None,
+            ip_address=None,
+            last_seen_at=session.last_seen_at.isoformat()
+            if session.last_seen_at is not None
+            else session.created_at.isoformat(),
+            location=None,
+            user_agent=None,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveSessionListResponse:
+    data: tuple[ActiveSessionResponse, ...]
+    permissions: ProfilePermissionsResponse
+
+
+@dataclass(frozen=True, slots=True)
+class ListActiveSessionsRequest:
+    identity_id: str
+    identity_type: str
+    current_session_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RevokeSessionRequest:
+    identity_id: str
+    identity_type: str
+    session_id: str
+    current_session_id: str | None = None
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChangePasswordRequest:
+    identity_id: str
+    identity_type: str
+    current_password: str
+    new_password: str
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UserPreferencesResponse:
+    date_time_format: str
+    display_density: str
+    language: str
+    theme: str
+    timezone: str
+
+    @classmethod
+    def from_domain(cls, preferences: UserPreferences) -> UserPreferencesResponse:
+        return cls(
+            date_time_format=preferences.date_time_format,
+            display_density=preferences.display_density,
+            language=preferences.language,
+            theme=preferences.theme,
+            timezone=preferences.timezone,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationPreferencesResponse:
+    audit_alerts: bool
+    email_enabled: bool
+    in_app_enabled: bool
+    product_updates: bool
+    security_alerts: bool
+
+    @classmethod
+    def from_domain(cls, preferences: UserPreferences) -> NotificationPreferencesResponse:
+        return cls(
+            audit_alerts=preferences.audit_alerts,
+            email_enabled=preferences.email_enabled,
+            in_app_enabled=preferences.in_app_enabled,
+            product_updates=preferences.product_updates,
+            security_alerts=preferences.security_alerts,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PublicSettingsResponse:
+    api_status: str
+    backend_version: str | None
+    deployment_mode: str | None
+    environment: str | None
+    frontend_version: str | None
+    instance_name: str | None
+    public_url: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class SettingsPermissionsResponse:
+    read: bool
+    update: bool
+    update_notifications: bool
+    update_preferences: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SettingsResponse:
+    notifications: NotificationPreferencesResponse
+    permissions: SettingsPermissionsResponse
+    preferences: UserPreferencesResponse
+    public_settings: PublicSettingsResponse
+
+
+@dataclass(frozen=True, slots=True)
+class GetSettingsRequest:
+    identity_id: str
+    identity_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class UpdatePreferencesRequest:
+    identity_id: str
+    identity_type: str
+    date_time_format: str
+    display_density: str
+    language: str
+    theme: str
+    timezone: str
+    audit_context: AuditContext | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateNotificationsRequest:
+    identity_id: str
+    identity_type: str
+    audit_alerts: bool
+    email_enabled: bool
+    in_app_enabled: bool
+    product_updates: bool
+    security_alerts: bool
+    audit_context: AuditContext | None = None

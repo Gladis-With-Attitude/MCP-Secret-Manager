@@ -15,16 +15,25 @@ from application.health import HealthStatus
 from application.identity.use_cases import (
     AuthenticateApiKeyUseCase,
     AuthenticateSessionUseCase,
+    ChangePasswordUseCase,
     CreateApiKeyUseCase,
     CreateServiceAccountUseCase,
     CreateSessionUseCase,
     CreateUserUseCase,
+    GetAccountSecurityUseCase,
     GetApiKeyUseCase,
+    GetCurrentProfileUseCase,
     GetCurrentSessionUseCase,
+    GetSettingsUseCase,
+    ListActiveSessionsUseCase,
     ListApiKeysUseCase,
     RevokeApiKeyUseCase,
     RevokeCurrentSessionUseCase,
+    RevokeSessionUseCase,
     UpdateApiKeyUseCase,
+    UpdateCurrentProfileUseCase,
+    UpdateNotificationsUseCase,
+    UpdatePreferencesUseCase,
 )
 from application.project.use_cases import (
     ArchiveProjectUseCase,
@@ -86,6 +95,7 @@ from presentation.mcp.server import McpServer
 from presentation.mcp.tools import SecretManagerMcpTools
 from presentation.rest.app import create_app
 from presentation.rest.dependencies import (
+    get_account_security_use_case,
     get_active_secret_version_use_case,
     get_api_key_use_case,
     get_archive_project_use_case,
@@ -93,6 +103,7 @@ from presentation.rest.dependencies import (
     get_archive_vault_use_case,
     get_assign_actor_role_use_case,
     get_authorize_use_case,
+    get_change_password_use_case,
     get_create_api_key_use_case,
     get_create_project_use_case,
     get_create_role_use_case,
@@ -102,7 +113,9 @@ from presentation.rest.dependencies import (
     get_create_session_use_case,
     get_create_user_use_case,
     get_create_vault_use_case,
+    get_current_profile_use_case,
     get_current_session_use_case,
+    get_list_active_sessions_use_case,
     get_list_actor_roles_use_case,
     get_list_api_keys_use_case,
     get_list_audit_events_use_case,
@@ -117,10 +130,15 @@ from presentation.rest.dependencies import (
     get_revoke_actor_role_use_case,
     get_revoke_api_key_use_case,
     get_revoke_current_session_use_case,
+    get_revoke_session_use_case,
     get_role_use_case,
     get_secret_use_case,
     get_secret_version_metadata_use_case,
+    get_settings_use_case,
     get_update_api_key_use_case,
+    get_update_current_profile_use_case,
+    get_update_notifications_use_case,
+    get_update_preferences_use_case,
     get_update_project_use_case,
     get_update_role_use_case,
     get_update_secret_use_case,
@@ -366,6 +384,49 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 audit_recorder=audit_recorder,
             )
 
+        def current_profile_use_case() -> GetCurrentProfileUseCase:
+            return GetCurrentProfileUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def update_current_profile_use_case() -> UpdateCurrentProfileUseCase:
+            return UpdateCurrentProfileUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def account_security_use_case() -> GetAccountSecurityUseCase:
+            return GetAccountSecurityUseCase()
+
+        def list_active_sessions_use_case() -> ListActiveSessionsUseCase:
+            return ListActiveSessionsUseCase(SqlAlchemyUnitOfWork(session_factory))
+
+        def revoke_session_use_case() -> RevokeSessionUseCase:
+            return RevokeSessionUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def change_password_use_case() -> ChangePasswordUseCase:
+            return ChangePasswordUseCase()
+
+        def settings_use_case() -> GetSettingsUseCase:
+            return GetSettingsUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                service_name=resolved_settings.service_name,
+                environment=resolved_settings.environment,
+            )
+
+        def update_preferences_use_case() -> UpdatePreferencesUseCase:
+            return UpdatePreferencesUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
+        def update_notifications_use_case() -> UpdateNotificationsUseCase:
+            return UpdateNotificationsUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                audit_recorder=audit_recorder,
+            )
+
         def authorize_use_case() -> AuthorizeUseCase:
             return AuthorizeUseCase(
                 PermissionChecker(SqlAlchemyUnitOfWork(session_factory)),
@@ -522,6 +583,17 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         app.dependency_overrides[get_revoke_current_session_use_case] = (
             revoke_current_session_use_case
         )
+        app.dependency_overrides[get_current_profile_use_case] = current_profile_use_case
+        app.dependency_overrides[get_update_current_profile_use_case] = (
+            update_current_profile_use_case
+        )
+        app.dependency_overrides[get_account_security_use_case] = account_security_use_case
+        app.dependency_overrides[get_list_active_sessions_use_case] = list_active_sessions_use_case
+        app.dependency_overrides[get_revoke_session_use_case] = revoke_session_use_case
+        app.dependency_overrides[get_change_password_use_case] = change_password_use_case
+        app.dependency_overrides[get_settings_use_case] = settings_use_case
+        app.dependency_overrides[get_update_preferences_use_case] = update_preferences_use_case
+        app.dependency_overrides[get_update_notifications_use_case] = update_notifications_use_case
         app.dependency_overrides[get_authorize_use_case] = authorize_use_case
         app.dependency_overrides[get_list_permissions_use_case] = list_permissions_use_case
         app.dependency_overrides[get_list_roles_use_case] = list_roles_use_case

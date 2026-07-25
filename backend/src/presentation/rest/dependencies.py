@@ -75,6 +75,69 @@ async def get_revoke_current_session_use_case() -> NoReturn:
     )
 
 
+async def get_current_profile_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Profile persistence is not configured.",
+    )
+
+
+async def get_update_current_profile_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Profile persistence is not configured.",
+    )
+
+
+async def get_account_security_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Profile persistence is not configured.",
+    )
+
+
+async def get_list_active_sessions_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Profile persistence is not configured.",
+    )
+
+
+async def get_revoke_session_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Profile persistence is not configured.",
+    )
+
+
+async def get_change_password_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Profile persistence is not configured.",
+    )
+
+
+async def get_settings_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Settings persistence is not configured.",
+    )
+
+
+async def get_update_preferences_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Settings persistence is not configured.",
+    )
+
+
+async def get_update_notifications_use_case() -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Settings persistence is not configured.",
+    )
+
+
 async def get_authorize_use_case() -> NoReturn:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

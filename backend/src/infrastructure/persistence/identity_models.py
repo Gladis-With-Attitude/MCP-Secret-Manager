@@ -4,11 +4,11 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User
+from domain.identity.entities import ApiKey, AuthSession, ServiceAccount, User, UserPreferences
 from domain.identity.value_objects import (
     ApiKeyId,
     ApiKeyOwnerType,
@@ -65,6 +65,83 @@ class UserModel(Base):
             display_name=UserDisplayName(self.display_name),
             status=IdentityStatus(self.status),
             created_at=self.created_at,
+        )
+
+
+class UserPreferencesModel(Base):
+    __tablename__ = "user_preferences"
+    __table_args__ = (
+        CheckConstraint(
+            "theme IN ('light', 'dark', 'system')",
+            name="ck_user_preferences_theme_valid",
+        ),
+        CheckConstraint(
+            "language IN ('en', 'fr')",
+            name="ck_user_preferences_language_valid",
+        ),
+        CheckConstraint(
+            "date_time_format IN ('absolute', 'relative', 'short')",
+            name="ck_user_preferences_date_time_format_valid",
+        ),
+        CheckConstraint(
+            "display_density IN ('comfortable', 'compact')",
+            name="ck_user_preferences_display_density_valid",
+        ),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("users.id", name="fk_user_preferences_user_id_users", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    organization: Mapped[str | None] = mapped_column(String(length=120), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(length=2048), nullable=True)
+    theme: Mapped[str] = mapped_column(String(length=32), nullable=False)
+    language: Mapped[str] = mapped_column(String(length=16), nullable=False)
+    timezone: Mapped[str] = mapped_column(String(length=80), nullable=False)
+    date_time_format: Mapped[str] = mapped_column(String(length=32), nullable=False)
+    display_density: Mapped[str] = mapped_column(String(length=32), nullable=False)
+    audit_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    in_app_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    product_updates: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    security_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    user: Mapped[UserModel] = relationship("UserModel")
+
+    @classmethod
+    def from_domain(cls, preferences: UserPreferences) -> UserPreferencesModel:
+        return cls(
+            user_id=preferences.user_id.value,
+            organization=preferences.organization,
+            avatar_url=preferences.avatar_url,
+            theme=preferences.theme,
+            language=preferences.language,
+            timezone=preferences.timezone,
+            date_time_format=preferences.date_time_format,
+            display_density=preferences.display_density,
+            audit_alerts=preferences.audit_alerts,
+            email_enabled=preferences.email_enabled,
+            in_app_enabled=preferences.in_app_enabled,
+            product_updates=preferences.product_updates,
+            security_alerts=preferences.security_alerts,
+        )
+
+    def to_domain(self) -> UserPreferences:
+        return UserPreferences(
+            user_id=UserId(self.user_id),
+            organization=self.organization,
+            avatar_url=self.avatar_url,
+            theme=self.theme,
+            language=self.language,
+            timezone=self.timezone,
+            date_time_format=self.date_time_format,
+            display_density=self.display_density,
+            audit_alerts=self.audit_alerts,
+            email_enabled=self.email_enabled,
+            in_app_enabled=self.in_app_enabled,
+            product_updates=self.product_updates,
+            security_alerts=self.security_alerts,
         )
 
 
