@@ -59,8 +59,9 @@ headers, raw API keys or secret values.
 The REST API exposes `GET /v1/metrics` with lightweight Prometheus-compatible
 process-local HTTP request counters and duration totals.
 
-The local Compose stack includes an opt-in Prometheus service for operators who
-want to scrape the endpoint without adding managed infrastructure:
+The local Compose stack includes opt-in Prometheus and Grafana services for
+operators who want to scrape and inspect the endpoint without adding managed
+infrastructure:
 
 ```bash
 make up-observability
@@ -78,10 +79,22 @@ metrics endpoint does not include request bodies, authorization headers, API
 keys or secret values, but it can reveal operational metadata such as route
 templates and status counts.
 
+Grafana reads provisioning files from `monitoring/grafana/provisioning` and
+loads the checked-in `monitoring/grafana/dashboards/secret-manager-overview.json`
+dashboard. The dashboard uses only aggregate Prometheus metrics for REST request
+counts, status codes and average duration; it does not include request bodies,
+headers, API keys, secret values or example credentials. The local Grafana UI is
+bound to `127.0.0.1:${GRAFANA_PORT:-3001}` by default and is configured for
+anonymous viewer access so local operators can inspect the provisioned dashboard
+without committing an admin password. Keep it behind trusted networks or add
+deployment-specific authentication before exposing it elsewhere. Set
+`GRAFANA_IMAGE` to a pinned image tag for repeatable production-like
+deployments.
+
 Validate the checked-in wiring before deployment changes with:
 
 ```bash
 docker compose --env-file .env.example --profile observability config
 ```
 
-Grafana dashboards and OpenTelemetry tracing remain separate D1 follow-up work.
+OpenTelemetry tracing remains separate D1 follow-up work.

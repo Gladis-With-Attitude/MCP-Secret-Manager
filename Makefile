@@ -52,7 +52,7 @@ up-db:
 	$(COMPOSE) --env-file $(ENV_FILE) up -d postgres
 
 up-observability:
-	$(COMPOSE) --env-file $(ENV_FILE) --profile observability up -d prometheus
+	$(COMPOSE) --env-file $(ENV_FILE) --profile observability up -d prometheus grafana
 
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down

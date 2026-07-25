@@ -167,6 +167,31 @@ services:
     networks:
       - mcp_secret_manager
 
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana-oss:latest}
+    container_name: mcp-secret-manager-grafana
+    profiles:
+      - observability
+    depends_on:
+      - prometheus
+    environment:
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/secret-manager-overview.json
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - mcp_secret_manager
+
 networks:
   mcp_secret_manager:
     driver: bridge
@@ -174,5 +199,6 @@ networks:
 volumes:
   postgres_data:
   prometheus_data:
+  grafana_data:
   frontend_node_modules:
   frontend_next:
