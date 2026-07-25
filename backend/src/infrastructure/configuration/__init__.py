@@ -15,6 +15,7 @@ from infrastructure.configuration.models import (
     RuntimeConfiguration,
     RuntimeEnvironment,
     SecurityConfig,
+    SecurityHeadersConfig,
 )
 from infrastructure.configuration.settings import (
     AppSettings,
@@ -40,6 +41,7 @@ __all__ = [
     "RuntimeConfiguration",
     "RuntimeEnvironment",
     "SecurityConfig",
+    "SecurityHeadersConfig",
     "get_settings",
     "log_safe_runtime_configuration",
 ]

@@ -81,6 +81,16 @@ def test_opentelemetry_endpoint_is_redacted_from_safe_summary() -> None:
     assert "secret-token" not in summary
 
 
+def test_security_headers_are_enabled_by_default() -> None:
+    settings = AppSettings(environment="test", bootstrap_enabled=False)
+
+    configuration = settings.runtime_configuration()
+
+    assert configuration.security.security_headers_enabled is True
+    assert configuration.rest_api.security_headers.enabled is True
+    assert configuration.rest_api.security_headers.hsts_enabled is False
+
+
 def test_invalid_database_driver_is_rejected() -> None:
     settings = AppSettings(
         environment="development",
@@ -128,6 +138,46 @@ def test_production_requires_security_configuration() -> None:
     assert "MCP_SECRET_MANAGER_SECURE_COOKIES" in message
 
 
+def test_production_requires_security_headers() -> None:
+    settings = AppSettings(
+        environment="production",
+        database_url=VALID_DATABASE_URL,
+        master_key_base64=VALID_MASTER_KEY,
+        secret_key=VALID_SECRET_KEY,
+        tls_required=True,
+        secure_cookies=True,
+        security_headers_enabled=False,
+        allow_insecure_dev_defaults=False,
+        openapi_enabled=False,
+        cors_allowed_origins="https://app.example.com",
+        bootstrap_admin_email="admin@example.local",
+        bootstrap_admin_name="Administrator",
+    )
+
+    with pytest.raises(ConfigurationError, match="SECURITY_HEADERS_ENABLED"):
+        settings.validate_runtime()
+
+
+def test_tls_required_enables_hsts_header_configuration() -> None:
+    settings = AppSettings(
+        environment="production",
+        database_url=VALID_DATABASE_URL,
+        master_key_base64=VALID_MASTER_KEY,
+        secret_key=VALID_SECRET_KEY,
+        tls_required=True,
+        secure_cookies=True,
+        allow_insecure_dev_defaults=False,
+        openapi_enabled=False,
+        cors_allowed_origins="https://app.example.com",
+        bootstrap_admin_email="admin@example.local",
+        bootstrap_admin_name="Administrator",
+    )
+
+    configuration = settings.runtime_configuration()
+
+    assert configuration.rest_api.security_headers.hsts_enabled is True
+
+
 def test_production_configuration_is_valid_when_hardened() -> None:
     settings = AppSettings(
         environment="production",
@@ -162,6 +212,26 @@ def test_production_rejects_insecure_cors() -> None:
     )
 
     with pytest.raises(ConfigurationError, match="HTTPS origins"):
+        settings.validate_runtime()
+
+
+def test_production_rejects_wildcard_cors() -> None:
+    settings = AppSettings(
+        environment="production",
+        database_url=VALID_DATABASE_URL,
+        master_key_base64=VALID_MASTER_KEY,
+        secret_key=VALID_SECRET_KEY,
+        tls_required=True,
+        secure_cookies=True,
+        allow_insecure_dev_defaults=False,
+        openapi_enabled=False,
+        cors_allowed_origins="*",
+        cors_allow_credentials=False,
+        bootstrap_admin_email="admin@example.local",
+        bootstrap_admin_name="Administrator",
+    )
+
+    with pytest.raises(ConfigurationError, match="wildcard"):
         settings.validate_runtime()
 
 

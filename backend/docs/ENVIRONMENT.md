@@ -40,7 +40,8 @@ explicit `ConfigurationError` when a critical setting is missing or unsafe.
 | `MCP_SECRET_MANAGER_CORS_ALLOWED_ORIGINS` | CSV string | local frontend origins | yes | Allowed CORS origins. Production origins must use HTTPS. |
 | `MCP_SECRET_MANAGER_CORS_ALLOWED_METHODS` | CSV string | common REST methods | yes | Allowed CORS methods. |
 | `MCP_SECRET_MANAGER_CORS_ALLOWED_HEADERS` | CSV string | `Authorization,Content-Type` | yes | Allowed CORS headers. |
-| `MCP_SECRET_MANAGER_CORS_ALLOW_CREDENTIALS` | boolean | `true` | no | Whether CORS credentials are allowed. Cannot be used with wildcard origins. |
+| `MCP_SECRET_MANAGER_CORS_ALLOW_CREDENTIALS` | boolean | `true` | no | Whether CORS credentials are allowed. Cannot be used with wildcard origins. Production rejects wildcard origins. |
+| `MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED` | boolean | `true` | no | Enables baseline REST security headers. Must be `true` in production. HSTS is emitted when `MCP_SECRET_MANAGER_TLS_REQUIRED=true`. |
 | `MCP_SECRET_MANAGER_MCP_ENABLED` | boolean | `true` | no | Enables MCP runtime configuration. |
 | `MCP_SECRET_MANAGER_DOCKER_ENABLED` | boolean | `false` | no | Marks the runtime as Docker-managed. |
 | `MCP_SECRET_MANAGER_AUDIT_RETENTION_DAYS` | integer | `365` | no | Audit retention window in days. |
@@ -84,18 +85,22 @@ Production validation rejects:
 - `MCP_SECRET_MANAGER_OPENAPI_ENABLED=true`;
 - `MCP_SECRET_MANAGER_TLS_REQUIRED=false`;
 - `MCP_SECRET_MANAGER_SECURE_COOKIES=false`;
+- `MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED=false`;
 - `MCP_SECRET_MANAGER_ALLOW_INSECURE_DEV_DEFAULTS=true`;
 - non-HTTPS CORS origins;
-- wildcard CORS origins when credentials are enabled.
+- wildcard CORS origins in production or when credentials are enabled.
 
 Safe configuration logs expose only non-sensitive metadata. Passwords, API keys,
 tokens, master keys and secret keys are never logged.
 
 ## Observability
 
-REST responses include `X-Request-ID`. A client-supplied valid `X-Request-ID` is
-echoed back; otherwise the backend generates one. Request logs include only safe
-metadata: request id, method, route template, status code and duration.
+REST responses include baseline security headers, including CSP, frame denial,
+MIME sniffing protection, referrer policy and permissions policy. HSTS is added
+when TLS is required. Responses also include `X-Request-ID`. A client-supplied
+valid `X-Request-ID` is echoed back; otherwise the backend generates one.
+Request logs include only safe metadata: request id, method, route template,
+status code and duration.
 
 `GET /v1/metrics` exposes lightweight Prometheus-compatible counters and
 duration totals for HTTP requests in the current process. Metrics labels use

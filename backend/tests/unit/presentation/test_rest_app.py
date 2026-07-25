@@ -6,7 +6,11 @@ import anyio
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 
-from infrastructure.configuration.models import OpenTelemetryConfig
+from infrastructure.configuration.models import (
+    CorsConfig,
+    OpenTelemetryConfig,
+    SecurityHeadersConfig,
+)
 from presentation.rest.app import create_app
 
 
@@ -58,6 +62,54 @@ async def fetch_health_with_opentelemetry_enabled() -> Response:
         return await client.get("/v1/health", headers={"X-Request-ID": "req-otel"})
 
 
+async def fetch_health_with_hsts_enabled() -> Response:
+    security_headers = SecurityHeadersConfig(
+        enabled=True,
+        hsts_enabled=True,
+        content_security_policy="frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        frame_options="DENY",
+        content_type_options="nosniff",
+        referrer_policy="no-referrer",
+        permissions_policy="camera=(), microphone=(), geolocation=()",
+        strict_transport_security="max-age=31536000; includeSubDomains",
+    )
+    transport = ASGITransport(
+        app=create_app(service_name="test-service", security_headers=security_headers)
+    )
+
+    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
+        return await client.get("/v1/health")
+
+
+async def fetch_configured_cors_responses() -> tuple[Response, Response]:
+    cors = CorsConfig(
+        allowed_origins=("https://app.example.com",),
+        allowed_methods=("GET", "OPTIONS"),
+        allowed_headers=("Authorization", "Content-Type"),
+        allow_credentials=True,
+    )
+    transport = ASGITransport(app=create_app(service_name="test-service", cors=cors))
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        allowed_response = await client.options(
+            "/v1/health",
+            headers={
+                "Origin": "https://app.example.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "Authorization",
+            },
+        )
+        rejected_response = await client.options(
+            "/v1/health",
+            headers={
+                "Origin": "https://evil.example.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "Authorization",
+            },
+        )
+        return allowed_response, rejected_response
+
+
 def test_health_endpoint_returns_minimal_liveness_payload() -> None:
     response = anyio.run(fetch_health_response)
 
@@ -72,6 +124,37 @@ def test_health_endpoint_returns_minimal_liveness_payload() -> None:
         "use_cases": "not_configured",
     }
     assert response.headers["X-Request-ID"]
+
+
+def test_rest_responses_include_baseline_security_headers() -> None:
+    response = anyio.run(fetch_health_response)
+
+    assert response.status_code == 200
+    assert response.headers["Content-Security-Policy"] == (
+        "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    )
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
+    assert "Strict-Transport-Security" not in response.headers
+
+
+def test_strict_transport_security_is_enabled_for_tls_runtime() -> None:
+    response = anyio.run(fetch_health_with_hsts_enabled)
+
+    assert response.status_code == 200
+    assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+
+
+def test_cors_uses_configured_origin_allow_list() -> None:
+    allowed_response, rejected_response = anyio.run(fetch_configured_cors_responses)
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.headers["Access-Control-Allow-Origin"] == "https://app.example.com"
+    assert allowed_response.headers["Access-Control-Allow-Credentials"] == "true"
+    assert rejected_response.status_code == 400
+    assert "Access-Control-Allow-Origin" not in rejected_response.headers
 
 
 def test_rest_requests_echo_valid_request_id() -> None:

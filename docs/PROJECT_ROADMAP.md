@@ -122,7 +122,7 @@ Objective: transform the MVP into a production-ready product.
 | D1b | ✅ | Prometheus scrape configuration, opt-in Compose service wiring and operator documentation for `/v1/metrics` |
 | D1c | ✅ | Expanded application/service logs for high-value use cases |
 | D1d | ✅ | Grafana dashboards |
-| D1e | ⏳ | OpenTelemetry traces and cross-service correlation |
+| D1e | ✅ | OpenTelemetry traces and cross-service correlation |
 
 D1a intentionally keeps the foundation small: logs and metrics include request
 metadata such as method, route template, status, duration and request id, but do
@@ -143,15 +143,23 @@ D1d adds opt-in Grafana provisioning and a checked-in dashboard for the existing
 Prometheus metrics. The dashboard remains limited to aggregate REST request
 counts, status codes and average duration.
 
+D1e adds opt-in OpenTelemetry REST tracing with trace propagation and safe span
+attributes for method, route template, status and request id. Tracing remains
+disabled by default and excludes request bodies, authorization headers, API
+keys, session tokens and secret material.
+
 ### D2 - Security Hardening
 
-- CSP
-- Security headers
-- Strict CORS
+- D2a ✅ FastAPI baseline security headers and runtime-configured strict CORS
 - CSRF if cookies are used
 - Rate limiting
 - Secret scanning
 - Dependency scanning
+
+D2a applies baseline HTTP security headers to REST responses and wires FastAPI
+CORS middleware to the existing runtime allow-list. Production validation keeps
+security headers enabled, requires HTTPS CORS origins and rejects wildcard
+origins.
 
 ### D3 - CI/CD
 

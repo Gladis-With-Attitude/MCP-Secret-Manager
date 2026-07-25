@@ -5,11 +5,16 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
+from starlette.middleware.cors import CORSMiddleware
 from starlette.types import Lifespan
 
 from application.health import HealthStatus, get_liveness_status
 from application.identity.use_cases import AuthenticateApiKeyUseCase, AuthenticateSessionUseCase
-from infrastructure.configuration.models import OpenTelemetryConfig
+from infrastructure.configuration.models import (
+    CorsConfig,
+    OpenTelemetryConfig,
+    SecurityHeadersConfig,
+)
 from infrastructure.tracing import OpenTelemetryTracingMiddleware, opentelemetry_api_available
 from presentation.rest.audit import router as audit_router
 from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
@@ -18,6 +23,7 @@ from presentation.rest.observability import InMemoryHttpMetrics, RequestObservab
 from presentation.rest.projects import router as projects_router
 from presentation.rest.rbac import router as rbac_router
 from presentation.rest.secrets import router as secrets_router
+from presentation.rest.security import DEFAULT_SECURITY_HEADERS, SecurityHeadersMiddleware
 from presentation.rest.vaults import router as vaults_router
 
 
@@ -29,6 +35,8 @@ def create_app(
     authenticate_session_use_case: AuthenticateSessionUseCase | None = None,
     health_check: Callable[[], Awaitable[HealthStatus]] | None = None,
     opentelemetry: OpenTelemetryConfig | None = None,
+    cors: CorsConfig | None = None,
+    security_headers: SecurityHeadersConfig = DEFAULT_SECURITY_HEADERS,
 ) -> FastAPI:
     docs_url = "/docs" if openapi_enabled else None
     openapi_url = "/openapi.json" if openapi_enabled else None
@@ -79,6 +87,15 @@ def create_app(
     app.add_middleware(RequestObservabilityMiddleware, metrics=metrics)
     if opentelemetry is not None and opentelemetry.traces_enabled and opentelemetry_api_available():
         app.add_middleware(OpenTelemetryTracingMiddleware)
+    if cors is not None:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(cors.allowed_origins),
+            allow_methods=list(cors.allowed_methods),
+            allow_headers=list(cors.allowed_headers),
+            allow_credentials=cors.allow_credentials,
+        )
+    app.add_middleware(SecurityHeadersMiddleware, config=security_headers)
 
     return app
 

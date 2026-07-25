@@ -30,6 +30,7 @@ MCP_SECRET_MANAGER_MASTER_KEY_VERSION=1
 MCP_SECRET_MANAGER_SECRET_KEY=<at-least-32-characters>
 MCP_SECRET_MANAGER_TLS_REQUIRED=true
 MCP_SECRET_MANAGER_SECURE_COOKIES=true
+MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED=true
 MCP_SECRET_MANAGER_ALLOW_INSECURE_DEV_DEFAULTS=false
 MCP_SECRET_MANAGER_OPENAPI_ENABLED=false
 MCP_SECRET_MANAGER_CORS_ALLOWED_ORIGINS=https://app.example.com
@@ -48,6 +49,15 @@ missing or unsafe variable.
 
 Safe configuration logs include only non-sensitive metadata such as environment,
 port, enabled flags and whether sensitive values are configured.
+
+The REST API emits baseline security headers by default: CSP constraints for
+framing, base URIs and form posts, `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a minimal
+permissions policy. Production validation keeps those headers enabled, and
+`Strict-Transport-Security` is added when
+`MCP_SECRET_MANAGER_TLS_REQUIRED=true`. Keep `MCP_SECRET_MANAGER_CORS_ALLOWED_ORIGINS`
+to the exact frontend origins; wildcard and non-HTTPS origins are rejected in
+production.
 
 ## Observability
 

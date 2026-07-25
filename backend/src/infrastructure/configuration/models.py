@@ -27,6 +27,7 @@ class SecurityConfig:
     secret_key_min_length: int
     tls_required: bool
     secure_cookies: bool
+    security_headers_enabled: bool
     allow_insecure_dev_defaults: bool
 
 
@@ -53,11 +54,24 @@ class CorsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SecurityHeadersConfig:
+    enabled: bool
+    hsts_enabled: bool
+    content_security_policy: str
+    frame_options: str
+    content_type_options: str
+    referrer_policy: str
+    permissions_policy: str
+    strict_transport_security: str
+
+
+@dataclass(frozen=True, slots=True)
 class RestApiConfig:
     host: str
     port: int
     openapi_enabled: bool
     cors: CorsConfig
+    security_headers: SecurityHeadersConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +147,7 @@ class RuntimeConfiguration:
                 "secret_key_configured": self.security.secret_key_configured,
                 "tls_required": self.security.tls_required,
                 "secure_cookies": self.security.secure_cookies,
+                "security_headers_enabled": self.security.security_headers_enabled,
             },
             "cryptography": {
                 "master_key_configured": self.cryptography.master_key_configured,
@@ -145,6 +160,8 @@ class RuntimeConfiguration:
                 "openapi_enabled": self.rest_api.openapi_enabled,
                 "cors_origins_count": len(self.rest_api.cors.allowed_origins),
                 "cors_allow_credentials": self.rest_api.cors.allow_credentials,
+                "security_headers_enabled": self.rest_api.security_headers.enabled,
+                "hsts_enabled": self.rest_api.security_headers.hsts_enabled,
             },
             "mcp": {"enabled": self.mcp.enabled},
             "logging": {

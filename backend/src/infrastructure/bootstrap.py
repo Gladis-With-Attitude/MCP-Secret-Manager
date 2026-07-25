@@ -234,8 +234,9 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     resolved_settings.validate_runtime()
     log_safe_runtime_configuration(resolved_settings)
     logger.info("✓ Configuration chargée")
+    runtime_configuration = resolved_settings.runtime_configuration()
     configure_opentelemetry_tracing(
-        resolved_settings.runtime_configuration().opentelemetry,
+        runtime_configuration.opentelemetry,
         service_name=resolved_settings.service_name,
         environment=resolved_settings.environment,
         service_version="0.1.0",
@@ -310,7 +311,9 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         authenticate_api_key_use_case=authenticate_api_key_use_case,
         authenticate_session_use_case=authenticate_session_use_case,
         health_check=health_check,
-        opentelemetry=resolved_settings.runtime_configuration().opentelemetry,
+        opentelemetry=runtime_configuration.opentelemetry,
+        cors=runtime_configuration.rest_api.cors,
+        security_headers=runtime_configuration.rest_api.security_headers,
     )
 
     if session_factory is not None:

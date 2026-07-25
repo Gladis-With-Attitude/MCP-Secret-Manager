@@ -28,6 +28,7 @@ from infrastructure.configuration.models import (
     RuntimeConfiguration,
     RuntimeEnvironment,
     SecurityConfig,
+    SecurityHeadersConfig,
 )
 from infrastructure.logging import safe_log_extra
 
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 SECRET_KEY_MIN_LENGTH = 32
 MASTER_KEY_BYTES = 32
+DEFAULT_CONTENT_SECURITY_POLICY = "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+DEFAULT_PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
+DEFAULT_STRICT_TRANSPORT_SECURITY = "max-age=31536000; includeSubDomains"
 
 
 class ConfigurationError(RuntimeError):
@@ -65,6 +69,7 @@ class AppSettings(BaseSettings):
     secret_key: str | None = None
     tls_required: bool = False
     secure_cookies: bool = False
+    security_headers_enabled: bool = True
     allow_insecure_dev_defaults: bool = True
 
     master_key_base64: str | None = None
@@ -112,6 +117,7 @@ class AppSettings(BaseSettings):
                 secret_key_min_length=SECRET_KEY_MIN_LENGTH,
                 tls_required=self.tls_required,
                 secure_cookies=self.secure_cookies,
+                security_headers_enabled=self.security_headers_enabled,
                 allow_insecure_dev_defaults=self.allow_insecure_dev_defaults,
             ),
             authentication=AuthenticationConfig(
@@ -137,6 +143,16 @@ class AppSettings(BaseSettings):
                     allowed_methods=_split_csv(self.cors_allowed_methods),
                     allowed_headers=_split_csv(self.cors_allowed_headers),
                     allow_credentials=self.cors_allow_credentials,
+                ),
+                security_headers=SecurityHeadersConfig(
+                    enabled=self.security_headers_enabled,
+                    hsts_enabled=self.tls_required,
+                    content_security_policy=DEFAULT_CONTENT_SECURITY_POLICY,
+                    frame_options="DENY",
+                    content_type_options="nosniff",
+                    referrer_policy="no-referrer",
+                    permissions_policy=DEFAULT_PERMISSIONS_POLICY,
+                    strict_transport_security=DEFAULT_STRICT_TRANSPORT_SECURITY,
                 ),
             ),
             mcp=McpConfig(enabled=self.mcp_enabled),
@@ -224,6 +240,8 @@ class AppSettings(BaseSettings):
             errors.append("MCP_SECRET_MANAGER_TLS_REQUIRED must be true in production.")
         if self.environment == "production" and not self.secure_cookies:
             errors.append("MCP_SECRET_MANAGER_SECURE_COOKIES must be true in production.")
+        if self.environment == "production" and not self.security_headers_enabled:
+            errors.append("MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED must be true in production.")
         if self.environment == "production" and self.allow_insecure_dev_defaults:
             errors.append(
                 "MCP_SECRET_MANAGER_ALLOW_INSECURE_DEV_DEFAULTS must be false in production."
@@ -271,7 +289,11 @@ class AppSettings(BaseSettings):
         if self.environment == "production":
             for origin in origins:
                 if origin == "*":
-                    continue
+                    errors.append(
+                        "MCP_SECRET_MANAGER_CORS_ALLOWED_ORIGINS cannot use wildcard "
+                        "origins in production."
+                    )
+                    break
                 if not origin.startswith("https://"):
                     errors.append(
                         "MCP_SECRET_MANAGER_CORS_ALLOWED_ORIGINS must use HTTPS origins "
