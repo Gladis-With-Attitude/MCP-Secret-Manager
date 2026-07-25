@@ -92,6 +92,7 @@ def _record_event_fields(record: logging.LogRecord) -> dict[str, object]:
     request_id = current_request_id()
     if request_id is not None:
         fields["request_id"] = request_id
+    fields.update(_current_trace_fields())
 
     event_fields = getattr(record, "event_fields", None)
     if isinstance(event_fields, Mapping):
@@ -102,6 +103,15 @@ def _record_event_fields(record: logging.LogRecord) -> dict[str, object]:
 
 def _string_key_mapping(fields: Mapping[Any, Any]) -> dict[str, object]:
     return {str(key): value for key, value in fields.items()}
+
+
+def _current_trace_fields() -> dict[str, object]:
+    try:
+        from infrastructure.tracing import current_trace_log_fields
+    except ModuleNotFoundError:
+        return {}
+
+    return current_trace_log_fields()
 
 
 def _redact_value(key: str, value: object) -> object:

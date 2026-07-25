@@ -95,6 +95,7 @@ from infrastructure.identity import (
 from infrastructure.logging import configure_runtime_logging
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from infrastructure.tracing import configure_opentelemetry_tracing
 from presentation.mcp.server import McpServer
 from presentation.mcp.tools import SecretManagerMcpTools
 from presentation.rest.app import create_app
@@ -233,6 +234,12 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     resolved_settings.validate_runtime()
     log_safe_runtime_configuration(resolved_settings)
     logger.info("✓ Configuration chargée")
+    configure_opentelemetry_tracing(
+        resolved_settings.runtime_configuration().opentelemetry,
+        service_name=resolved_settings.service_name,
+        environment=resolved_settings.environment,
+        service_version="0.1.0",
+    )
 
     engine = (
         create_database_engine(resolved_settings.database_url)
@@ -303,6 +310,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         authenticate_api_key_use_case=authenticate_api_key_use_case,
         authenticate_session_use_case=authenticate_session_use_case,
         health_check=health_check,
+        opentelemetry=resolved_settings.runtime_configuration().opentelemetry,
     )
 
     if session_factory is not None:

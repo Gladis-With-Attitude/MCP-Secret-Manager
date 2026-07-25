@@ -56,6 +56,31 @@ def test_test_environment_allows_missing_runtime_secrets() -> None:
     settings.validate_runtime()
 
 
+def test_opentelemetry_tracing_is_disabled_by_default() -> None:
+    settings = AppSettings(environment="test", bootstrap_enabled=False)
+
+    configuration = settings.runtime_configuration()
+
+    assert configuration.opentelemetry.traces_enabled is False
+    assert configuration.opentelemetry.exporter_otlp_endpoint is None
+
+
+def test_opentelemetry_endpoint_is_redacted_from_safe_summary() -> None:
+    settings = AppSettings(
+        environment="test",
+        bootstrap_enabled=False,
+        otel_traces_enabled=True,
+        otel_exporter_otlp_endpoint="https://collector.example/v1/traces?token=secret-token",
+    )
+
+    summary = str(settings.runtime_configuration().safe_summary())
+
+    assert "traces_enabled" in summary
+    assert "exporter_otlp_endpoint_configured" in summary
+    assert "collector.example" not in summary
+    assert "secret-token" not in summary
+
+
 def test_invalid_database_driver_is_rejected() -> None:
     settings = AppSettings(
         environment="development",

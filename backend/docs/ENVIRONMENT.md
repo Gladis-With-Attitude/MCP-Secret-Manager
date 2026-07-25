@@ -22,6 +22,8 @@ explicit `ConfigurationError` when a critical setting is missing or unsafe.
 | `MCP_SECRET_MANAGER_DEBUG` | boolean | `false` | no | Enables debug behavior. Must be `false` in production. |
 | `MCP_SECRET_MANAGER_LOG_LEVEL` | enum | `INFO` | no | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
 | `MCP_SECRET_MANAGER_LOG_JSON` | boolean | `false` | no | Enables structured JSON logs with safe redaction. |
+| `MCP_SECRET_MANAGER_OTEL_TRACES_ENABLED` | boolean | `false` | no | Enables optional OpenTelemetry server spans for REST requests. |
+| `MCP_SECRET_MANAGER_OTEL_EXPORTER_OTLP_ENDPOINT` | string | none | no | Optional OTLP/HTTP traces endpoint. Leave empty to use OpenTelemetry exporter defaults. Do not embed credentials in the URL. |
 | `MCP_SECRET_MANAGER_DATABASE_URL` | string | none | yes except `test` | SQLAlchemy URL for PostgreSQL. Must use `postgresql+asyncpg`. |
 | `MCP_SECRET_MANAGER_ALEMBIC_CONFIG` | string | auto-detected | no | Alembic configuration path for migration commands. |
 | `MCP_SECRET_MANAGER_MIGRATION_WAIT_TIMEOUT_SECONDS` | integer | `60` | no | PostgreSQL readiness timeout for migrations. |

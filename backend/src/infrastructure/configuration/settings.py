@@ -23,6 +23,7 @@ from infrastructure.configuration.models import (
     DockerConfig,
     LoggingConfig,
     McpConfig,
+    OpenTelemetryConfig,
     RestApiConfig,
     RuntimeConfiguration,
     RuntimeEnvironment,
@@ -53,6 +54,8 @@ class AppSettings(BaseSettings):
     debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_json: bool = False
+    otel_traces_enabled: bool = False
+    otel_exporter_otlp_endpoint: str | None = None
 
     database_url: str | None = None
     alembic_config: str | None = None
@@ -138,6 +141,10 @@ class AppSettings(BaseSettings):
             ),
             mcp=McpConfig(enabled=self.mcp_enabled),
             logging=LoggingConfig(level=self.log_level, json_enabled=self.log_json),
+            opentelemetry=OpenTelemetryConfig(
+                traces_enabled=self.otel_traces_enabled,
+                exporter_otlp_endpoint=_optional_value(self.otel_exporter_otlp_endpoint),
+            ),
             docker=DockerConfig(enabled=self.docker_enabled),
             development=DevelopmentConfig(
                 reset_enabled=os.environ.get("MCP_SECRET_MANAGER_ALLOW_DB_RESET") == "true",

@@ -86,3 +86,11 @@ headers, API keys and secret values are not logged. Set
 `GET /v1/metrics` exposes lightweight Prometheus-compatible request counters and
 duration totals for the running process. It is intentionally minimal and does
 not replace a full Prometheus/Grafana deployment.
+
+Optional OpenTelemetry tracing can be enabled with
+`MCP_SECRET_MANAGER_OTEL_TRACES_ENABLED=true`. Set
+`MCP_SECRET_MANAGER_OTEL_EXPORTER_OTLP_ENDPOINT` when traces should be sent to a
+specific OTLP/HTTP collector. REST spans include only the HTTP method, route
+template, response status and request id; request bodies, authorization headers,
+API keys, session tokens, secret values, names and descriptions are not added to
+spans or logs.

@@ -9,6 +9,8 @@ from starlette.types import Lifespan
 
 from application.health import HealthStatus, get_liveness_status
 from application.identity.use_cases import AuthenticateApiKeyUseCase, AuthenticateSessionUseCase
+from infrastructure.configuration.models import OpenTelemetryConfig
+from infrastructure.tracing import OpenTelemetryTracingMiddleware, opentelemetry_api_available
 from presentation.rest.audit import router as audit_router
 from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
 from presentation.rest.identity import router as identity_router
@@ -26,6 +28,7 @@ def create_app(
     authenticate_api_key_use_case: AuthenticateApiKeyUseCase | None = None,
     authenticate_session_use_case: AuthenticateSessionUseCase | None = None,
     health_check: Callable[[], Awaitable[HealthStatus]] | None = None,
+    opentelemetry: OpenTelemetryConfig | None = None,
 ) -> FastAPI:
     docs_url = "/docs" if openapi_enabled else None
     openapi_url = "/openapi.json" if openapi_enabled else None
@@ -74,6 +77,8 @@ def create_app(
         authenticate_session_use_case=authenticate_session_use_case,
     )
     app.add_middleware(RequestObservabilityMiddleware, metrics=metrics)
+    if opentelemetry is not None and opentelemetry.traces_enabled and opentelemetry_api_available():
+        app.add_middleware(OpenTelemetryTracingMiddleware)
 
     return app
 

@@ -14,6 +14,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from infrastructure.logging import bind_request_id, reset_request_id, safe_log_extra
+from infrastructure.tracing import annotate_current_trace_request_id, safe_route_path
 
 REQUEST_ID_HEADER = "X-Request-ID"
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:/=-]{1,128}$")
@@ -98,6 +99,7 @@ class RequestObservabilityMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         request_id = get_or_create_request_id(request)
         token = bind_request_id(request_id)
+        annotate_current_trace_request_id(request_id)
         started_at = perf_counter()
 
         try:
@@ -167,11 +169,7 @@ def get_or_create_request_id(request: Request) -> str:
 
 
 def _route_path(request: Request) -> str:
-    route = request.scope.get("route")
-    path = getattr(route, "path", None)
-    if isinstance(path, str):
-        return path
-    return request.url.path
+    return safe_route_path(request)
 
 
 def _render_labels(labels: Mapping[str, str]) -> str:

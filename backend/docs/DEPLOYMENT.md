@@ -55,9 +55,28 @@ Set `MCP_SECRET_MANAGER_LOG_JSON=true` in containerized or production-like
 deployments when logs are collected by a structured log pipeline. Logs include
 request ids and safe HTTP metadata, but never request bodies, authorization
 headers, raw API keys or secret values.
+Keep generic server access logs disabled unless the ingress layer can redact
+paths and query strings, because the backend already emits sanitized route
+template request logs.
 
 The REST API exposes `GET /v1/metrics` with lightweight Prometheus-compatible
 process-local HTTP request counters and duration totals.
+
+Optional OpenTelemetry REST tracing is disabled by default. Enable it only when
+an operator-controlled collector is available:
+
+```bash
+MCP_SECRET_MANAGER_OTEL_TRACES_ENABLED=true
+MCP_SECRET_MANAGER_OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+```
+
+The backend also honors OpenTelemetry trace propagation headers
+(`traceparent`/`tracestate`) so upstream traces can correlate with backend
+spans. Span attributes are intentionally limited to HTTP method, route template,
+response status and request id. Do not configure header capture in the runtime
+environment, and do not embed collector credentials in the OTLP endpoint URL.
+Request bodies, authorization headers, API keys, session tokens, secret values,
+secret names and secret descriptions must stay out of traces and logs.
 
 The local Compose stack includes opt-in Prometheus and Grafana services for
 operators who want to scrape and inspect the endpoint without adding managed
@@ -96,5 +115,3 @@ Validate the checked-in wiring before deployment changes with:
 ```bash
 docker compose --env-file .env.example --profile observability config
 ```
-
-OpenTelemetry tracing remains separate D1 follow-up work.

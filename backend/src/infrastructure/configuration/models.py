@@ -72,6 +72,12 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class OpenTelemetryConfig:
+    traces_enabled: bool
+    exporter_otlp_endpoint: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class DockerConfig:
     enabled: bool
 
@@ -105,6 +111,7 @@ class RuntimeConfiguration:
     rest_api: RestApiConfig
     mcp: McpConfig
     logging: LoggingConfig
+    opentelemetry: OpenTelemetryConfig
     docker: DockerConfig
     development: DevelopmentConfig
     bootstrap: BootstrapConfig
@@ -143,6 +150,12 @@ class RuntimeConfiguration:
             "logging": {
                 "level": self.logging.level,
                 "json_enabled": self.logging.json_enabled,
+            },
+            "opentelemetry": {
+                "traces_enabled": self.opentelemetry.traces_enabled,
+                "exporter_otlp_endpoint_configured": (
+                    self.opentelemetry.exporter_otlp_endpoint is not None
+                ),
             },
             "docker": {"enabled": self.docker.enabled},
             "development": {

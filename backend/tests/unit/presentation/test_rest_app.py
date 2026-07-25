@@ -6,6 +6,7 @@ import anyio
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 
+from infrastructure.configuration.models import OpenTelemetryConfig
 from presentation.rest.app import create_app
 
 
@@ -30,6 +31,31 @@ async def fetch_metrics_after_health() -> Response:
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         await client.get("/v1/health")
         return await client.get("/v1/metrics")
+
+
+async def fetch_unknown_path_then_metrics() -> tuple[Response, Response]:
+    app = create_app(service_name="test-service")
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        unknown_response = await client.get("/v1/unknown/prod-db-password")
+        metrics_response = await client.get("/v1/metrics")
+        return unknown_response, metrics_response
+
+
+async def fetch_health_with_opentelemetry_enabled() -> Response:
+    transport = ASGITransport(
+        app=create_app(
+            service_name="test-service",
+            opentelemetry=OpenTelemetryConfig(
+                traces_enabled=True,
+                exporter_otlp_endpoint=None,
+            ),
+        )
+    )
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        return await client.get("/v1/health", headers={"X-Request-ID": "req-otel"})
 
 
 def test_health_endpoint_returns_minimal_liveness_payload() -> None:
@@ -73,6 +99,37 @@ def test_metrics_endpoint_exposes_request_counts() -> None:
         in response.text
     )
     assert "mcp_secret_manager_http_request_duration_seconds_count" in response.text
+
+
+def test_unknown_routes_use_safe_observability_path(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="presentation.rest.observability")
+
+    unknown_response, metrics_response = anyio.run(fetch_unknown_path_then_metrics)
+
+    assert unknown_response.status_code == 404
+    assert (
+        'mcp_secret_manager_http_requests_total{method="GET",path="unmatched_route",status="404"}'
+        in metrics_response.text
+    )
+    observability_records = [
+        record for record in caplog.records if record.name == "presentation.rest.observability"
+    ]
+    assert observability_records
+    assert all("prod-db-password" not in record.getMessage() for record in observability_records)
+    assert all(
+        "prod-db-password" not in str(getattr(record, "event_fields", {}))
+        for record in observability_records
+    )
+    assert "prod-db-password" not in metrics_response.text
+
+
+def test_opentelemetry_can_be_enabled_without_changing_request_id_behavior() -> None:
+    response = anyio.run(fetch_health_with_opentelemetry_enabled)
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "req-otel"
 
 
 def test_request_logging_omits_sensitive_inputs(caplog: pytest.LogCaptureFixture) -> None:
