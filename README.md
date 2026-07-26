@@ -129,7 +129,8 @@ business use cases.
 
 Backend documentation lives in `backend/docs/`. Frontend documentation lives in
 `frontend/docs/`. The project delivery roadmap lives in
-`docs/PROJECT_ROADMAP.md`. The top-level operator backup entry point lives in
+`docs/PROJECT_ROADMAP.md`. The top-level user guide lives in
+`docs/USER_GUIDE.md`, and the top-level operator backup entry point lives in
 `docs/BACKUP_GUIDE.md`.
 
 ## Conventions
