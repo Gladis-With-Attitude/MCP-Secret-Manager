@@ -154,7 +154,7 @@ keys, session tokens and secret material.
 - D2b ✅ CSRF protection for HTTP-only session-cookie authentication
 - D2c ✅ In-process REST rate limiting
 - Secret scanning ✅
-- Dependency scanning
+- Dependency scanning ✅
 
 D2a applies baseline HTTP security headers to REST responses and wires FastAPI
 CORS middleware to the existing runtime allow-list. Production validation keeps
@@ -176,6 +176,12 @@ Secret scanning adds a dedicated Gitleaks CI job that scans repository history
 on pull requests, manual runs and pushes to `main` or
 `security/production-readiness`. The same scanner can be run locally with
 `make secret-scan`.
+
+Dependency scanning adds a dedicated CI job for backend and frontend dependency
+advisories on pull requests, manual runs and pushes to `main` or
+`security/production-readiness`. Backend dependencies are audited with
+`pip-audit` through uv, frontend dependencies are audited with `npm audit`, and
+the same checks can be run locally with `make dependency-scan`.
 
 ### D3 - CI/CD
 

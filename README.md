@@ -38,10 +38,16 @@ make db-downgrade DB_DOWN_REVISION=-1
 make db-revision DB_REVISION_MESSAGE="describe change"
 make db-reset CONFIRM_RESET=dev
 make seed-run
+make secret-scan
+make dependency-scan
 ```
 
 Backend and frontend validation scripts remain available through their own
 directories when the corresponding toolchains are installed locally.
+
+`make secret-scan` runs Gitleaks against repository history. `make dependency-scan`
+audits backend dependencies with `pip-audit` through uv and frontend
+dependencies with `npm audit`.
 
 Docker-based validation can be run with:
 

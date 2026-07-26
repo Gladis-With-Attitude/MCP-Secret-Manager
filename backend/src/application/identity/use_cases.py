@@ -799,9 +799,7 @@ class AuthenticateSessionUseCase:
                 if auth_session.is_revoked() or auth_session.is_expired(datetime.now(UTC)):
                     raise AuthenticationFailedError("Invalid session.")
                 api_key = await unit_of_work.api_keys.get(auth_session.api_key_id)
-                if api_key is None or api_key.is_revoked() or api_key.is_expired(
-                    datetime.now(UTC)
-                ):
+                if api_key is None or api_key.is_revoked() or api_key.is_expired(datetime.now(UTC)):
                     raise AuthenticationFailedError("Invalid session.")
                 await CreateApiKeyUseCase._ensure_active_owner(
                     unit_of_work,
