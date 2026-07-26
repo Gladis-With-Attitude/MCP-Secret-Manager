@@ -30,6 +30,8 @@ venv/
 node_modules/
 out/
 *.tsbuildinfo
+playwright-report/
+test-results/
 
 # Docker
 postgres-data/

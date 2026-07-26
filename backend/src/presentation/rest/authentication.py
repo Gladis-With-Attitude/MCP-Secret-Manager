@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from hmac import compare_digest
 from typing import Annotated
@@ -20,6 +21,13 @@ SESSION_COOKIE_NAME = "mcp_sm_session"
 CSRF_COOKIE_NAME = "mcp_sm_csrf"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+
+AuthenticateApiKeyUseCaseProvider = (
+    AuthenticateApiKeyUseCase | Callable[[], AuthenticateApiKeyUseCase]
+)
+AuthenticateSessionUseCaseProvider = (
+    AuthenticateSessionUseCase | Callable[[], AuthenticateSessionUseCase]
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,8 +54,8 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app: ASGIApp,
-        authenticate_api_key_use_case: AuthenticateApiKeyUseCase | None = None,
-        authenticate_session_use_case: AuthenticateSessionUseCase | None = None,
+        authenticate_api_key_use_case: AuthenticateApiKeyUseCaseProvider | None = None,
+        authenticate_session_use_case: AuthenticateSessionUseCaseProvider | None = None,
     ) -> None:
         super().__init__(app)
         self._authenticate_api_key_use_case = authenticate_api_key_use_case
@@ -65,13 +73,14 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
             session_token = request.cookies.get(SESSION_COOKIE_NAME)
             if session_token is None:
                 return await call_next(request)
-            if self._authenticate_session_use_case is None:
+            authenticate_session_use_case = self._resolve_session_use_case()
+            if authenticate_session_use_case is None:
                 return JSONResponse(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     content={"detail": "Authentication is not configured."},
                 )
             try:
-                authenticated = await self._authenticate_session_use_case.execute(session_token)
+                authenticated = await authenticate_session_use_case.execute(session_token)
             except AuthenticationFailedError:
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -93,7 +102,8 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Invalid authentication credentials."},
             )
 
-        if self._authenticate_api_key_use_case is None:
+        authenticate_api_key_use_case = self._resolve_api_key_use_case()
+        if authenticate_api_key_use_case is None:
             return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 content={"detail": "Authentication is not configured."},
@@ -108,7 +118,7 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
             request_id=request_id,
         )
         try:
-            authenticated = await self._authenticate_api_key_use_case.execute(
+            authenticated = await authenticate_api_key_use_case.execute(
                 raw_api_key,
                 audit_context=audit_context,
             )
@@ -120,6 +130,22 @@ class ApiKeyAuthenticationMiddleware(BaseHTTPMiddleware):
 
         request.state.authenticated_identity = AuthenticatedIdentity.from_application(authenticated)
         return await call_next(request)
+
+    def _resolve_api_key_use_case(self) -> AuthenticateApiKeyUseCase | None:
+        use_case = self._authenticate_api_key_use_case
+        if use_case is None:
+            return None
+        if callable(use_case):
+            return use_case()
+        return use_case
+
+    def _resolve_session_use_case(self) -> AuthenticateSessionUseCase | None:
+        use_case = self._authenticate_session_use_case
+        if use_case is None:
+            return None
+        if callable(use_case):
+            return use_case()
+        return use_case
 
 
 def get_optional_authenticated_identity(request: Request) -> AuthenticatedIdentity | None:

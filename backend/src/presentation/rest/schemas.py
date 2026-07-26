@@ -327,6 +327,9 @@ class SecretListHttpResponse(BaseModel):
 class CreateSecretVersionHttpRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    make_current: bool = True
+    metadata: SecretMetadata = Field(default_factory=dict)
+    note: str | None = None
     value: str
 
 

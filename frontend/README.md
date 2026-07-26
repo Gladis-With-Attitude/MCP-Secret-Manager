@@ -21,6 +21,7 @@ npm install
 ```bash
 npm run dev
 npm run build
+npm run e2e
 npm run start
 npm run lint
 npm run test
@@ -49,6 +50,8 @@ npm run format:check
 - `assets/`: public visual assets without sensitive data.
 - `types/`: shared frontend types.
 - `tests/`: cross-cutting frontend tests.
+- `tests/e2e/`: Playwright workflow checks against a running REST backend and
+  production Next.js server.
 
 ## Conventions
 
@@ -70,4 +73,19 @@ npm run format:check
 
 ```bash
 npm run dev
+```
+
+## End-to-end
+
+Build the frontend, start the backend with a bootstrapped administrator API key,
+then run:
+
+```bash
+PLAYWRIGHT_ADMIN_API_KEY=mcp_sm_... npm run e2e
+```
+
+From the repository root, the same check is available as:
+
+```bash
+make playwright-e2e PLAYWRIGHT_ADMIN_API_KEY=mcp_sm_...
 ```

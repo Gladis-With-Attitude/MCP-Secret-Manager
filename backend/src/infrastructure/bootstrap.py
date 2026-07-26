@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -253,30 +253,32 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
     api_key_hasher = Argon2idApiKeyHasher()
     session_token_generator = SecureSessionTokenGenerator()
     session_token_hasher = Argon2idApiKeyHasher()
-    audit_recorder = (
-        PersistentAuditRecorder(SqlAlchemyUnitOfWork(session_factory))
-        if session_factory is not None
-        else None
-    )
-    authenticate_api_key_use_case = (
-        AuthenticateApiKeyUseCase(
-            SqlAlchemyUnitOfWork(session_factory),
-            api_key_generator,
-            api_key_hasher,
-            audit_recorder=audit_recorder,
-        )
-        if session_factory is not None
-        else None
-    )
-    authenticate_session_use_case = (
-        AuthenticateSessionUseCase(
-            SqlAlchemyUnitOfWork(session_factory),
-            session_token_generator,
-            session_token_hasher,
-        )
-        if session_factory is not None
-        else None
-    )
+
+    def create_audit_recorder() -> PersistentAuditRecorder | None:
+        if session_factory is None:
+            return None
+
+        return PersistentAuditRecorder(SqlAlchemyUnitOfWork(session_factory))
+
+    authenticate_api_key_use_case: Callable[[], AuthenticateApiKeyUseCase] | None = None
+    authenticate_session_use_case: Callable[[], AuthenticateSessionUseCase] | None = None
+
+    if session_factory is not None:
+
+        def authenticate_api_key_use_case() -> AuthenticateApiKeyUseCase:
+            return AuthenticateApiKeyUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                api_key_generator,
+                api_key_hasher,
+                audit_recorder=create_audit_recorder(),
+            )
+
+        def authenticate_session_use_case() -> AuthenticateSessionUseCase:
+            return AuthenticateSessionUseCase(
+                SqlAlchemyUnitOfWork(session_factory),
+                session_token_generator,
+                session_token_hasher,
+            )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -327,7 +329,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def create_vault_use_case() -> CreateVaultUseCase:
             return CreateVaultUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_vaults_use_case() -> ListVaultsUseCase:
@@ -336,19 +338,19 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def build_get_vault_use_case() -> GetVaultUseCase:
             return GetVaultUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def update_vault_use_case() -> UpdateVaultUseCase:
             return UpdateVaultUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def archive_vault_use_case() -> ArchiveVaultUseCase:
             return ArchiveVaultUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def create_user_use_case() -> CreateUserUseCase:
@@ -362,7 +364,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 SqlAlchemyUnitOfWork(session_factory),
                 api_key_generator,
                 api_key_hasher,
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_api_keys_use_case() -> ListApiKeysUseCase:
@@ -374,13 +376,13 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def update_api_key_use_case() -> UpdateApiKeyUseCase:
             return UpdateApiKeyUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def revoke_api_key_use_case() -> RevokeApiKeyUseCase:
             return RevokeApiKeyUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def create_session_use_case() -> CreateSessionUseCase:
@@ -390,7 +392,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
                 api_key_hasher,
                 session_token_generator,
                 session_token_hasher,
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def current_session_use_case() -> GetCurrentSessionUseCase:
@@ -399,7 +401,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def revoke_current_session_use_case() -> RevokeCurrentSessionUseCase:
             return RevokeCurrentSessionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def current_profile_use_case() -> GetCurrentProfileUseCase:
@@ -408,7 +410,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def update_current_profile_use_case() -> UpdateCurrentProfileUseCase:
             return UpdateCurrentProfileUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def account_security_use_case() -> GetAccountSecurityUseCase:
@@ -420,7 +422,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def revoke_session_use_case() -> RevokeSessionUseCase:
             return RevokeSessionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def change_password_use_case() -> ChangePasswordUseCase:
@@ -436,19 +438,19 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def update_preferences_use_case() -> UpdatePreferencesUseCase:
             return UpdatePreferencesUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def update_notifications_use_case() -> UpdateNotificationsUseCase:
             return UpdateNotificationsUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def authorize_use_case() -> AuthorizeUseCase:
             return AuthorizeUseCase(
                 PermissionChecker(SqlAlchemyUnitOfWork(session_factory)),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_permissions_use_case() -> ListPermissionsUseCase:
@@ -460,19 +462,19 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def build_get_role_use_case() -> GetRoleUseCase:
             return GetRoleUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def create_role_use_case() -> CreateRoleUseCase:
             return CreateRoleUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def update_role_use_case() -> UpdateRoleUseCase:
             return UpdateRoleUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_actor_roles_use_case() -> ListActorRolesUseCase:
@@ -481,13 +483,13 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def assign_actor_role_use_case() -> AssignActorRoleUseCase:
             return AssignActorRoleUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def revoke_actor_role_use_case() -> RevokeActorRoleUseCase:
             return RevokeActorRoleUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_audit_events_use_case() -> ListAuditEventsUseCase:
@@ -499,7 +501,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def create_project_use_case() -> CreateProjectUseCase:
             return CreateProjectUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_projects_use_case() -> ListProjectsUseCase:
@@ -508,81 +510,81 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         def build_get_project_use_case() -> GetProjectUseCase:
             return GetProjectUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def update_project_use_case() -> UpdateProjectUseCase:
             return UpdateProjectUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def archive_project_use_case() -> ArchiveProjectUseCase:
             return ArchiveProjectUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def create_secret_use_case() -> CreateSecretUseCase:
             return CreateSecretUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_secrets_use_case() -> ListSecretsUseCase:
             return ListSecretsUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def build_get_secret_use_case() -> GetSecretUseCase:
             return GetSecretUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def update_secret_use_case() -> UpdateSecretUseCase:
             return UpdateSecretUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def archive_secret_use_case() -> ArchiveSecretUseCase:
             return ArchiveSecretUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def create_secret_version_use_case() -> CreateSecretVersionUseCase:
             return CreateSecretVersionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
                 EncryptSecretValueUseCase(crypto_provider),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def list_secret_versions_use_case() -> ListSecretVersionsUseCase:
             return ListSecretVersionsUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def build_get_secret_version_metadata_use_case() -> GetSecretVersionMetadataUseCase:
             return GetSecretVersionMetadataUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def build_active_secret_version_use_case() -> GetActiveSecretVersionUseCase:
             return GetActiveSecretVersionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
                 DecryptSecretValueUseCase(crypto_provider),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         def restore_secret_version_use_case() -> RestoreSecretVersionUseCase:
             return RestoreSecretVersionUseCase(
                 SqlAlchemyUnitOfWork(session_factory),
-                audit_recorder=audit_recorder,
+                audit_recorder=create_audit_recorder(),
             )
 
         app.dependency_overrides[get_create_vault_use_case] = create_vault_use_case

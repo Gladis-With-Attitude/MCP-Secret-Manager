@@ -62,7 +62,7 @@ async function archiveSecret(secretId: string): Promise<SecretDto> {
 }
 
 async function readSecretValue(secretId: string): Promise<SecretValueResponseDto> {
-  return get<SecretValueResponseDto>(`/v1/secrets/${secretId}/value`, {
+  return get<SecretValueResponseDto>(`/v1/secrets/${secretId}/versions/latest`, {
     retry: false,
   });
 }

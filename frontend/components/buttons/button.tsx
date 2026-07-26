@@ -53,19 +53,29 @@ function Button({
   variant,
   ...props
 }: ButtonProps) {
-  const Component = asChild ? Slot : "button";
+  if (asChild) {
+    return (
+      <Slot
+        aria-busy={isLoading || undefined}
+        className={cn(buttonVariants({ fullWidth, size, variant }), className)}
+        {...props}
+      >
+        {children}
+      </Slot>
+    );
+  }
 
   return (
-    <Component
+    <button
       aria-busy={isLoading || undefined}
       className={cn(buttonVariants({ fullWidth, size, variant }), className)}
-      disabled={!asChild ? disabled || isLoading : undefined}
-      type={!asChild ? type : undefined}
+      disabled={disabled || isLoading}
+      type={type}
       {...props}
     >
       {isLoading ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
       {children}
-    </Component>
+    </button>
   );
 }
 

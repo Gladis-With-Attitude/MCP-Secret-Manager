@@ -32,6 +32,14 @@ describe("Button", () => {
     expect(button).toHaveAttribute("aria-busy", "true");
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it("renders a single slotted child for link-style buttons", () => {
+    render(
+      createElement(Button, { asChild: true }, createElement("a", { href: "/vaults" }, "Vaults")),
+    );
+
+    expect(screen.getByRole("link", { name: "Vaults" })).toHaveAttribute("href", "/vaults");
+  });
 });
 
 describe("IconButton", () => {

@@ -190,3 +190,118 @@ jobs:
           target: development
           push: false
           tags: mcp-secret-manager-frontend:ci
+
+  playwright-e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mcp_secret_manager_e2e
+          POSTGRES_USER: mcp_secret_manager
+          POSTGRES_PASSWORD: mcp_secret_manager_e2e_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mcp_secret_manager -d mcp_secret_manager_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      MCP_SECRET_MANAGER_ENVIRONMENT: test
+      MCP_SECRET_MANAGER_DATABASE_URL: postgresql+asyncpg://mcp_secret_manager:mcp_secret_manager_e2e_password@127.0.0.1:5432/mcp_secret_manager_e2e
+      MCP_SECRET_MANAGER_REST_HOST: 127.0.0.1
+      MCP_SECRET_MANAGER_REST_PORT: 8000
+      MCP_SECRET_MANAGER_OPENAPI_ENABLED: "true"
+      MCP_SECRET_MANAGER_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      MCP_SECRET_MANAGER_CORS_ALLOWED_METHODS: GET,POST,PUT,PATCH,DELETE,OPTIONS
+      MCP_SECRET_MANAGER_CORS_ALLOWED_HEADERS: Authorization,Content-Type,X-CSRF-Token
+      MCP_SECRET_MANAGER_CORS_ALLOW_CREDENTIALS: "true"
+      MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED: "true"
+      MCP_SECRET_MANAGER_SECRET_KEY: e2e-test-secret-key-change-me-32chars
+      MCP_SECRET_MANAGER_TLS_REQUIRED: "false"
+      MCP_SECRET_MANAGER_SECURE_COOKIES: "false"
+      MCP_SECRET_MANAGER_ALLOW_INSECURE_DEV_DEFAULTS: "true"
+      MCP_SECRET_MANAGER_MASTER_KEY_BASE64: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      MCP_SECRET_MANAGER_MASTER_KEY_VERSION: 1
+      MCP_SECRET_MANAGER_BOOTSTRAP_ENABLED: "true"
+      MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_EMAIL: admin@example.local
+      MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_NAME: Administrator
+      MCP_SECRET_MANAGER_BOOTSTRAP_ADMIN_API_KEY: mcp_sm_0123456789abcdef_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+      NEXT_PUBLIC_APP_ENV: test
+      PLAYWRIGHT_ADMIN_API_KEY: mcp_sm_0123456789abcdef_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend package
+        working-directory: backend
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run database migrations
+        working-directory: backend
+        run: python -m infrastructure.database_migrations upgrade
+
+      - name: Bootstrap test administrator
+        working-directory: backend
+        run: python -m infrastructure.seed
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          python -m uvicorn infrastructure.bootstrap:app --host 127.0.0.1 --port 8000 --no-access-log &
+          echo "$!" > ../backend.pid
+
+      - name: Wait for backend health
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/v1/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not become healthy."
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Run Playwright workflow checks
+        working-directory: frontend
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          if-no-files-found: ignore

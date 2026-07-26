@@ -340,6 +340,12 @@ async def create_secret_version(
     authorize_use_case: AuthorizeUseCaseDependency,
     request: Request,
 ) -> SecretVersionMetadataHttpResponse:
+    if not payload.make_current:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Creating a non-current secret version is not supported.",
+        )
+
     secret = await authorize_existing_secret(
         "secret.rotate",
         secret_id,

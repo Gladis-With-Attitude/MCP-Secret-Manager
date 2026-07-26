@@ -33,8 +33,12 @@ def create_app(
     service_name: str = "mcp-secret-manager",
     openapi_enabled: bool = True,
     lifespan: Lifespan[FastAPI] | None = None,
-    authenticate_api_key_use_case: AuthenticateApiKeyUseCase | None = None,
-    authenticate_session_use_case: AuthenticateSessionUseCase | None = None,
+    authenticate_api_key_use_case: AuthenticateApiKeyUseCase
+    | Callable[[], AuthenticateApiKeyUseCase]
+    | None = None,
+    authenticate_session_use_case: AuthenticateSessionUseCase
+    | Callable[[], AuthenticateSessionUseCase]
+    | None = None,
     health_check: Callable[[], Awaitable[HealthStatus]] | None = None,
     opentelemetry: OpenTelemetryConfig | None = None,
     cors: CorsConfig | None = None,
