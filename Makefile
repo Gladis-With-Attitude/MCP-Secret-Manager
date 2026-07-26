@@ -9,6 +9,9 @@ DB_AUTOGENERATE ?= false
 FRONTEND_URL ?= http://localhost:3000
 OPEN_BROWSER ?= true
 FRONTEND_BROWSER ?= Firefox
+NEXT_PUBLIC_API_BASE_URL ?= http://127.0.0.1:8000
+NEXT_PUBLIC_APP_ENV ?= test
+PLAYWRIGHT_BASE_URL ?= http://127.0.0.1:3000
 PLAYWRIGHT_ADMIN_API_KEY ?=
 WARM_FRONTEND ?= true
 WARM_PAGE ?= true
@@ -88,7 +91,8 @@ docker-build:
 
 playwright-e2e:
 	@test -n "$(PLAYWRIGHT_ADMIN_API_KEY)" || (echo "PLAYWRIGHT_ADMIN_API_KEY is required."; exit 1)
-	cd frontend && PLAYWRIGHT_ADMIN_API_KEY="$(PLAYWRIGHT_ADMIN_API_KEY)" npm run e2e
+	cd frontend && NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" NEXT_PUBLIC_APP_ENV="$(NEXT_PUBLIC_APP_ENV)" npm run build
+	cd frontend && NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" NEXT_PUBLIC_APP_ENV="$(NEXT_PUBLIC_APP_ENV)" PLAYWRIGHT_BASE_URL="$(PLAYWRIGHT_BASE_URL)" PLAYWRIGHT_ADMIN_API_KEY="$(PLAYWRIGHT_ADMIN_API_KEY)" npm run e2e
 
 frontend-warm-pages:
 	@printf "Warming frontend pages in Next.js dev server...\n"

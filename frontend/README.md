@@ -84,8 +84,12 @@ then run:
 PLAYWRIGHT_ADMIN_API_KEY=mcp_sm_... npm run e2e
 ```
 
-From the repository root, the same check is available as:
+From the repository root, the same check builds the production frontend first
+and is available as:
 
 ```bash
 make playwright-e2e PLAYWRIGHT_ADMIN_API_KEY=mcp_sm_...
 ```
+
+Override `NEXT_PUBLIC_API_BASE_URL` and `PLAYWRIGHT_BASE_URL` if the backend or
+frontend test server uses non-default ports.

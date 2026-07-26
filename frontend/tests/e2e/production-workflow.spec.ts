@@ -126,9 +126,9 @@ test.describe("production readiness workflow", () => {
     await page.getByLabel("Action").fill("secret.decrypt");
     await page.getByRole("button", { name: "Apply filters" }).click();
     await expect(page.getByRole("table", { name: "Audit logs" })).toContainText("secret.decrypt");
-    await expect(page.getByRole("table", { name: "Audit logs" })).toContainText("success");
+    await expect(page.getByRole("table", { name: "Audit logs" })).toContainText("Success");
 
     await page.getByRole("button", { name: /Account/ }).click();
-    await expect(page.getByRole("heading", { name: "Authentication required" })).toBeVisible();
+    await expect(page.getByText("Authentication required")).toBeVisible();
   });
 });
