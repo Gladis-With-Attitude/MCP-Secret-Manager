@@ -24,11 +24,14 @@ API_KEY_ID ?= api-key-id
 AUDIT_EVENT_ID ?= audit-event-id
 ROLE_ID ?= role-id
 USER_ID ?= user-id
+RELEASE_VERSION ?= dev
+RELEASE_DIST_DIR ?= dist/release
+RELEASE_ARCHIVE_PREFIX ?= mcp-secret-manager-$(RELEASE_VERSION)
 
 GITLEAKS_IMAGE ?= ghcr.io/gitleaks/gitleaks:v8.30.1
 PIP_AUDIT_VERSION ?= 2.10.1
 
-.PHONY: install-dev up up-db up-observability down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run frontend-warm-pages secret-scan dependency-scan docker-build playwright-e2e format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
+.PHONY: install-dev up up-db up-observability down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run frontend-warm-pages secret-scan dependency-scan docker-build playwright-e2e release-artifacts format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
 
 define open_frontend_page
 	@url="$(FRONTEND_URL)$(1)"; \
@@ -93,6 +96,27 @@ playwright-e2e:
 	@test -n "$(PLAYWRIGHT_ADMIN_API_KEY)" || (echo "PLAYWRIGHT_ADMIN_API_KEY is required."; exit 1)
 	cd frontend && NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" NEXT_PUBLIC_APP_ENV="$(NEXT_PUBLIC_APP_ENV)" npm run build
 	cd frontend && NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" NEXT_PUBLIC_APP_ENV="$(NEXT_PUBLIC_APP_ENV)" PLAYWRIGHT_BASE_URL="$(PLAYWRIGHT_BASE_URL)" PLAYWRIGHT_ADMIN_API_KEY="$(PLAYWRIGHT_ADMIN_API_KEY)" npm run e2e
+
+release-artifacts:
+	@case "$(RELEASE_VERSION)" in ""|*[!A-Za-z0-9._-]*) echo "RELEASE_VERSION must contain only letters, numbers, dots, underscores or hyphens."; exit 1;; esac
+	rm -rf "$(RELEASE_DIST_DIR)"
+	mkdir -p "$(RELEASE_DIST_DIR)"
+	git archive --format=tar.gz --prefix="$(RELEASE_ARCHIVE_PREFIX)/" -o "$(RELEASE_DIST_DIR)/$(RELEASE_ARCHIVE_PREFIX)-source.tar.gz" HEAD
+	@sha="$$(git rev-parse HEAD)"; \
+	ref="$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"; \
+	created_at="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"; \
+	printf '{\n' > "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '  "name": "mcp-secret-manager",\n' >> "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '  "version": "%s",\n' "$(RELEASE_VERSION)" >> "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '  "git_sha": "%s",\n' "$$sha" >> "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '  "git_ref": "%s",\n' "$$ref" >> "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '  "created_at": "%s",\n' "$$created_at" >> "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '  "archive": "%s-source.tar.gz"\n' "$(RELEASE_ARCHIVE_PREFIX)" >> "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '}\n' >> "$(RELEASE_DIST_DIR)/release-manifest.json"; \
+	printf '# MCP Secret Manager %s\n\n' "$(RELEASE_VERSION)" > "$(RELEASE_DIST_DIR)/RELEASE_NOTES.md"; \
+	printf 'Release validation is performed by the GitHub Actions release workflow before these artifacts are published.\n\n' >> "$(RELEASE_DIST_DIR)/RELEASE_NOTES.md"; \
+	printf 'Commit: `%s`\n' "$$sha" >> "$(RELEASE_DIST_DIR)/RELEASE_NOTES.md"
+	cd "$(RELEASE_DIST_DIR)" && sha256sum "$(RELEASE_ARCHIVE_PREFIX)-source.tar.gz" release-manifest.json RELEASE_NOTES.md > SHA256SUMS
 
 frontend-warm-pages:
 	@printf "Warming frontend pages in Next.js dev server...\n"

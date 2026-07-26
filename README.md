@@ -40,6 +40,7 @@ make db-reset CONFIRM_RESET=dev
 make seed-run
 make secret-scan
 make dependency-scan
+make release-artifacts RELEASE_VERSION=v0.1.0-rc.1
 ```
 
 Backend and frontend validation scripts remain available through their own
@@ -48,6 +49,13 @@ directories when the corresponding toolchains are installed locally.
 `make secret-scan` runs Gitleaks against repository history. `make dependency-scan`
 audits backend dependencies with `pip-audit` through uv and frontend
 dependencies with `npm audit`.
+
+`make release-artifacts RELEASE_VERSION=...` creates an ignored
+`dist/release/` source bundle, manifest, release notes stub and SHA-256 checksums.
+The GitHub Actions release workflow uses the same target after the existing CI
+quality, security, Docker and Playwright gates pass. Manual runs upload the
+bundle as a workflow artifact; tag pushes matching `v*` also prepare a draft
+GitHub Release without publishing container images or requiring extra secrets.
 
 Docker-based validation can be run with:
 
