@@ -1,6 +1,8 @@
 PYTHON ?= python3
+DOCKER ?= docker
 COMPOSE ?= docker compose
 ENV_FILE ?= .env.example
+DOCKER_BUILD_PROGRESS ?= plain
 DB_DOWN_REVISION ?= -1
 DB_REVISION_MESSAGE ?= database change
 DB_AUTOGENERATE ?= false
@@ -22,7 +24,7 @@ USER_ID ?= user-id
 GITLEAKS_IMAGE ?= ghcr.io/gitleaks/gitleaks:v8.30.1
 PIP_AUDIT_VERSION ?= 2.10.1
 
-.PHONY: install-dev up up-db up-observability down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run frontend-warm-pages secret-scan dependency-scan format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
+.PHONY: install-dev up up-db up-observability down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run frontend-warm-pages secret-scan dependency-scan docker-build format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
 
 define open_frontend_page
 	@url="$(FRONTEND_URL)$(1)"; \
@@ -78,6 +80,10 @@ secret-scan:
 dependency-scan:
 	cd backend && uv run --extra dev --with pip-audit==$(PIP_AUDIT_VERSION) pip-audit --progress-spinner off --skip-editable
 	cd frontend && npm audit --audit-level=high
+
+docker-build:
+	$(DOCKER) build --progress=$(DOCKER_BUILD_PROGRESS) --target development -t mcp-secret-manager-backend:ci ./backend
+	$(DOCKER) build --progress=$(DOCKER_BUILD_PROGRESS) --target development -t mcp-secret-manager-frontend:ci ./frontend
 
 frontend-warm-pages:
 	@printf "Warming frontend pages in Next.js dev server...\n"

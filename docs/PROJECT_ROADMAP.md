@@ -185,14 +185,16 @@ the same checks can be run locally with `make dependency-scan`.
 
 ### D3 - CI/CD
 
-- GitHub Actions
-- Ruff
-- MyPy
-- Pytest
-- Frontend tests
-- Playwright
-- Docker build
-- Release pipeline
+| Slice | Status | Scope |
+| --- | --- | --- |
+| D3a | ✅ | GitHub Actions quality gates for Ruff, MyPy, Pytest, frontend lint/typecheck/tests and frontend production build |
+| D3b | ✅ | CI and local validation for backend and frontend Docker image builds |
+| D3c | ⏳ | Playwright end-to-end workflow checks |
+| D3d | ⏳ | Release pipeline |
+
+D3b adds a dedicated GitHub Actions Docker build job for the backend and
+frontend development images. The same validation can be run locally with
+`make docker-build`.
 
 ### D4 - Deployment
 
