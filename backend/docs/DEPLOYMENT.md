@@ -146,3 +146,7 @@ Before a restore, stop application writers, verify the checksum, confirm that
 the target database is the intended environment, then use
 `RESTORE_CONFIRM=replace`. After restore, run migrations/current-state checks
 and application smoke tests before returning traffic.
+
+Use `backend/docs/DISASTER_RECOVERY.md` as the operator runbook for disaster
+recovery readiness, restore decision gates, post-restore validation and
+compromise scenarios.

@@ -246,3 +246,17 @@ def test_database_docs_include_operator_backup_and_restore_flow() -> None:
     assert "sha256" in docs
     assert "application master" in docs
     assert "key is not stored in PostgreSQL" in docs
+    assert "backend/docs/DISASTER_RECOVERY.md" in docs
+
+
+def test_disaster_recovery_docs_cover_postgres_restore_runbook() -> None:
+    docs = read_repository_file("backend/docs/DISASTER_RECOVERY.md")
+
+    assert "make db-backup" in docs
+    assert "make db-restore" in docs
+    assert "RESTORE_CONFIRM=replace" in docs
+    assert "sha256sum -c" in docs
+    assert "application master key" in docs
+    assert "Never store the master key beside PostgreSQL dumps" in docs
+    assert "Post-Restore Validation" in docs
+    assert "Compromise Scenarios" in docs

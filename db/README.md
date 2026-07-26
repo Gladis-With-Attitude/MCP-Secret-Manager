@@ -70,6 +70,9 @@ make db-current
 After restore, validate the application with the normal smoke or test workflow
 before returning traffic to the restored database.
 
+For full incident handling, restore decision gates and post-restore validation,
+use `backend/docs/DISASTER_RECOVERY.md`.
+
 ## Reset
 
 The reset workflow is destructive and reserved for local development:
