@@ -31,6 +31,8 @@ make logs     # follow all service logs
 make logs-db  # follow postgres logs only
 make logs-bootstrap
 make up-observability  # start opt-in Prometheus and Grafana
+make docker-build
+make docker-build-production
 make db-current
 make db-history
 make db-upgrade
@@ -60,11 +62,18 @@ GitHub Release without publishing container images or requiring extra secrets.
 Docker-based validation can be run with:
 
 ```bash
+make docker-build
+make docker-build-production
 docker compose --env-file .env.example exec -T backend python -m pytest
 docker compose --env-file .env.example exec -T frontend npm run lint
 docker compose --env-file .env.example exec -T frontend npm run typecheck
 docker compose --env-file .env.example exec -T frontend npm run build
 ```
+
+`make docker-build` keeps validating the development images used by the local
+Compose stack. `make docker-build-production` validates the hardened production
+targets, which use multi-stage builds, non-root runtime users and container
+health checks.
 
 The backend container starts the fully bootstrapped FastAPI application from
 `infrastructure.bootstrap:app`. Runtime dependencies are wired to PostgreSQL

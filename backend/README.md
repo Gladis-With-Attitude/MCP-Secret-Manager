@@ -8,7 +8,7 @@ Backend FastAPI for MCP Secret Manager.
 - `backend/tests/`: backend unit, integration, security and e2e tests.
 - `backend/docs/`: backend architecture, security, API, MCP and contribution documentation.
 - `backend/configs/`: backend configuration examples without production secrets.
-- `backend/Dockerfile`: backend development image used by the root Compose stack.
+- `backend/Dockerfile`: backend development and production image targets.
 
 ## Development
 
@@ -34,6 +34,11 @@ The backend Docker image runs `infrastructure.bootstrap:app`, not the partial
 presentation-only application. The bootstrap validates configuration, connects to
 PostgreSQL, initializes repositories and use cases, injects the REST
 dependencies, and disposes the database engine during FastAPI shutdown.
+
+The production target installs only runtime dependencies into a virtual
+environment, runs as uid/gid `10001`, exposes port `8000` and checks
+`/v1/health` with Python's standard library. The development target remains the
+Compose default and keeps editable installs, bind mounts and auto-reload.
 
 Database migrations are executed by the dedicated Compose `migrations` service
 before the backend starts. The backend process itself does not run migrations.

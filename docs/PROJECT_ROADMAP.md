@@ -211,10 +211,14 @@ publish container images or require deployment secrets.
 
 ### D4 - Deployment
 
-- Production Dockerfiles
-- Multi-stage builds
-- Non-root containers
-- Health checks
+| Slice | Status | Scope |
+| --- | --- | --- |
+| D4a | ✅ | Production backend and frontend Docker targets with multi-stage builds, non-root runtime users and container health checks |
+
+D4a keeps the existing development Compose targets unchanged and adds dedicated
+production image targets for backend and frontend. Local and CI validation can
+build the hardened targets with `make docker-build-production`.
+
 - Readiness checks
 - Environment validation
 

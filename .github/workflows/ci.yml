@@ -183,6 +183,15 @@ jobs:
           push: false
           tags: mcp-secret-manager-backend:ci
 
+      - name: Build backend production image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          target: production
+          push: false
+          tags: mcp-secret-manager-backend:production-ci
+
       - name: Build frontend image
         uses: docker/build-push-action@v6
         with:
@@ -191,6 +200,15 @@ jobs:
           target: development
           push: false
           tags: mcp-secret-manager-frontend:ci
+
+      - name: Build frontend production image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          target: production
+          push: false
+          tags: mcp-secret-manager-frontend:production-ci
 
   playwright-e2e:
     name: Playwright E2E

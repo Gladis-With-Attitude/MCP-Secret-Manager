@@ -75,6 +75,13 @@ npm run format:check
 npm run dev
 ```
 
+## Docker
+
+The production Docker target builds the Next.js standalone server, runs as
+uid/gid `10001`, exposes port `3000` and checks `/` with Node's standard
+library. The development target remains the root Compose default and keeps
+auto-reload with bind-mounted source.
+
 ## End-to-end
 
 Build the frontend, start the backend with a bootstrapped administrator API key,
