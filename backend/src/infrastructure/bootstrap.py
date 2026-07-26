@@ -314,6 +314,7 @@ def create_rest_app(settings: AppSettings | None = None) -> FastAPI:
         opentelemetry=runtime_configuration.opentelemetry,
         cors=runtime_configuration.rest_api.cors,
         security_headers=runtime_configuration.rest_api.security_headers,
+        rate_limit=runtime_configuration.rest_api.rate_limit,
         secure_cookies=runtime_configuration.security.secure_cookies,
     )
 

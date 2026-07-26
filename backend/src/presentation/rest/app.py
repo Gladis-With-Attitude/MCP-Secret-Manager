@@ -13,6 +13,7 @@ from application.identity.use_cases import AuthenticateApiKeyUseCase, Authentica
 from infrastructure.configuration.models import (
     CorsConfig,
     OpenTelemetryConfig,
+    RateLimitConfig,
     SecurityHeadersConfig,
 )
 from infrastructure.tracing import OpenTelemetryTracingMiddleware, opentelemetry_api_available
@@ -21,6 +22,7 @@ from presentation.rest.authentication import ApiKeyAuthenticationMiddleware
 from presentation.rest.identity import router as identity_router
 from presentation.rest.observability import InMemoryHttpMetrics, RequestObservabilityMiddleware
 from presentation.rest.projects import router as projects_router
+from presentation.rest.rate_limiting import DEFAULT_RATE_LIMIT, RateLimitMiddleware
 from presentation.rest.rbac import router as rbac_router
 from presentation.rest.secrets import router as secrets_router
 from presentation.rest.security import DEFAULT_SECURITY_HEADERS, SecurityHeadersMiddleware
@@ -37,6 +39,7 @@ def create_app(
     opentelemetry: OpenTelemetryConfig | None = None,
     cors: CorsConfig | None = None,
     security_headers: SecurityHeadersConfig = DEFAULT_SECURITY_HEADERS,
+    rate_limit: RateLimitConfig = DEFAULT_RATE_LIMIT,
     secure_cookies: bool = False,
 ) -> FastAPI:
     docs_url = "/docs" if openapi_enabled else None
@@ -86,6 +89,7 @@ def create_app(
         authenticate_api_key_use_case=authenticate_api_key_use_case,
         authenticate_session_use_case=authenticate_session_use_case,
     )
+    app.add_middleware(RateLimitMiddleware, config=rate_limit)
     app.add_middleware(RequestObservabilityMiddleware, metrics=metrics)
     if opentelemetry is not None and opentelemetry.traces_enabled and opentelemetry_api_available():
         app.add_middleware(OpenTelemetryTracingMiddleware)

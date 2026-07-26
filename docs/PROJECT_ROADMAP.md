@@ -152,7 +152,7 @@ keys, session tokens and secret material.
 
 - D2a ✅ FastAPI baseline security headers and runtime-configured strict CORS
 - D2b ✅ CSRF protection for HTTP-only session-cookie authentication
-- Rate limiting
+- D2c ✅ In-process REST rate limiting
 - Secret scanning
 - Dependency scanning
 
@@ -165,6 +165,12 @@ D2b protects unsafe REST requests authenticated by the `mcp_sm_session`
 HTTP-only cookie with a double-submit CSRF token: the backend issues a readable
 `mcp_sm_csrf` cookie and requires the same value in `X-CSRF-Token`. Bearer API
 key requests and safe methods keep their existing behavior.
+
+D2c adds configurable in-process REST rate limiting keyed by direct client
+address. The first slice intentionally avoids external storage; it exposes
+standard rate-limit headers, rejects excess requests with `429`, exempts health
+and metrics probes by default, and requires the limiter to stay enabled in
+production configuration.
 
 ### D3 - CI/CD
 

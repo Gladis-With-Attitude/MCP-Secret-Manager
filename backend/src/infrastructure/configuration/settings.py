@@ -24,6 +24,7 @@ from infrastructure.configuration.models import (
     LoggingConfig,
     McpConfig,
     OpenTelemetryConfig,
+    RateLimitConfig,
     RestApiConfig,
     RuntimeConfiguration,
     RuntimeEnvironment,
@@ -39,6 +40,7 @@ MASTER_KEY_BYTES = 32
 DEFAULT_CONTENT_SECURITY_POLICY = "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 DEFAULT_PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
 DEFAULT_STRICT_TRANSPORT_SECURITY = "max-age=31536000; includeSubDomains"
+DEFAULT_RATE_LIMIT_EXEMPT_PATHS = "/v1/health,/v1/metrics"
 
 
 class ConfigurationError(RuntimeError):
@@ -83,6 +85,11 @@ class AppSettings(BaseSettings):
     cors_allowed_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
     cors_allowed_headers: str = "Authorization,Content-Type,X-CSRF-Token"
     cors_allow_credentials: bool = True
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = Field(default=120, ge=1)
+    rate_limit_window_seconds: int = Field(default=60, ge=1)
+    rate_limit_exempt_paths: str = DEFAULT_RATE_LIMIT_EXEMPT_PATHS
+    rate_limit_max_clients: int = Field(default=10000, ge=1)
 
     mcp_enabled: bool = True
     docker_enabled: bool = False
@@ -153,6 +160,13 @@ class AppSettings(BaseSettings):
                     referrer_policy="no-referrer",
                     permissions_policy=DEFAULT_PERMISSIONS_POLICY,
                     strict_transport_security=DEFAULT_STRICT_TRANSPORT_SECURITY,
+                ),
+                rate_limit=RateLimitConfig(
+                    enabled=self.rate_limit_enabled,
+                    requests=self.rate_limit_requests,
+                    window_seconds=self.rate_limit_window_seconds,
+                    exempt_paths=_split_csv(self.rate_limit_exempt_paths),
+                    max_clients=self.rate_limit_max_clients,
                 ),
             ),
             mcp=McpConfig(enabled=self.mcp_enabled),
@@ -242,6 +256,8 @@ class AppSettings(BaseSettings):
             errors.append("MCP_SECRET_MANAGER_SECURE_COOKIES must be true in production.")
         if self.environment == "production" and not self.security_headers_enabled:
             errors.append("MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED must be true in production.")
+        if self.environment == "production" and not self.rate_limit_enabled:
+            errors.append("MCP_SECRET_MANAGER_RATE_LIMIT_ENABLED must be true in production.")
         if self.environment == "production" and self.allow_insecure_dev_defaults:
             errors.append(
                 "MCP_SECRET_MANAGER_ALLOW_INSECURE_DEV_DEFAULTS must be false in production."

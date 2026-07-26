@@ -66,12 +66,22 @@ class SecurityHeadersConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class RateLimitConfig:
+    enabled: bool
+    requests: int
+    window_seconds: int
+    exempt_paths: tuple[str, ...]
+    max_clients: int
+
+
+@dataclass(frozen=True, slots=True)
 class RestApiConfig:
     host: str
     port: int
     openapi_enabled: bool
     cors: CorsConfig
     security_headers: SecurityHeadersConfig
+    rate_limit: RateLimitConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +172,11 @@ class RuntimeConfiguration:
                 "cors_allow_credentials": self.rest_api.cors.allow_credentials,
                 "security_headers_enabled": self.rest_api.security_headers.enabled,
                 "hsts_enabled": self.rest_api.security_headers.hsts_enabled,
+                "rate_limit_enabled": self.rest_api.rate_limit.enabled,
+                "rate_limit_requests": self.rest_api.rate_limit.requests,
+                "rate_limit_window_seconds": self.rest_api.rate_limit.window_seconds,
+                "rate_limit_exempt_paths_count": len(self.rest_api.rate_limit.exempt_paths),
+                "rate_limit_max_clients": self.rest_api.rate_limit.max_clients,
             },
             "mcp": {"enabled": self.mcp.enabled},
             "logging": {

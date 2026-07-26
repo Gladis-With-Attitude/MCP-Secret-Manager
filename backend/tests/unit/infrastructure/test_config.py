@@ -91,6 +91,17 @@ def test_security_headers_are_enabled_by_default() -> None:
     assert configuration.rest_api.security_headers.hsts_enabled is False
 
 
+def test_rate_limit_is_enabled_by_default() -> None:
+    settings = AppSettings(environment="test", bootstrap_enabled=False)
+
+    configuration = settings.runtime_configuration()
+
+    assert configuration.rest_api.rate_limit.enabled is True
+    assert configuration.rest_api.rate_limit.requests == 120
+    assert configuration.rest_api.rate_limit.window_seconds == 60
+    assert configuration.rest_api.rate_limit.exempt_paths == ("/v1/health", "/v1/metrics")
+
+
 def test_invalid_database_driver_is_rejected() -> None:
     settings = AppSettings(
         environment="development",
@@ -155,6 +166,26 @@ def test_production_requires_security_headers() -> None:
     )
 
     with pytest.raises(ConfigurationError, match="SECURITY_HEADERS_ENABLED"):
+        settings.validate_runtime()
+
+
+def test_production_requires_rate_limiting() -> None:
+    settings = AppSettings(
+        environment="production",
+        database_url=VALID_DATABASE_URL,
+        master_key_base64=VALID_MASTER_KEY,
+        secret_key=VALID_SECRET_KEY,
+        tls_required=True,
+        secure_cookies=True,
+        allow_insecure_dev_defaults=False,
+        openapi_enabled=False,
+        cors_allowed_origins="https://app.example.com",
+        rate_limit_enabled=False,
+        bootstrap_admin_email="admin@example.local",
+        bootstrap_admin_name="Administrator",
+    )
+
+    with pytest.raises(ConfigurationError, match="RATE_LIMIT_ENABLED"):
         settings.validate_runtime()
 
 

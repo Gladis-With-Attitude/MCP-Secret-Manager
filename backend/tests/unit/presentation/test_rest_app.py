@@ -9,9 +9,11 @@ from httpx import ASGITransport, AsyncClient, Response
 from infrastructure.configuration.models import (
     CorsConfig,
     OpenTelemetryConfig,
+    RateLimitConfig,
     SecurityHeadersConfig,
 )
 from presentation.rest.app import create_app
+from presentation.rest.rate_limiting import FixedWindowRateLimiter
 
 
 async def fetch_health_response() -> Response:
@@ -110,6 +112,54 @@ async def fetch_configured_cors_responses() -> tuple[Response, Response]:
         return allowed_response, rejected_response
 
 
+async def fetch_rate_limited_responses() -> tuple[Response, Response, Response]:
+    rate_limit = RateLimitConfig(
+        enabled=True,
+        requests=2,
+        window_seconds=60,
+        exempt_paths=(),
+        max_clients=100,
+    )
+    transport = ASGITransport(app=create_app(service_name="test-service", rate_limit=rate_limit))
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first_response = await client.get("/v1/unknown")
+        second_response = await client.get("/v1/unknown")
+        limited_response = await client.get("/v1/unknown")
+        return first_response, second_response, limited_response
+
+
+async def fetch_health_responses_with_tight_rate_limit() -> tuple[Response, Response]:
+    rate_limit = RateLimitConfig(
+        enabled=True,
+        requests=1,
+        window_seconds=60,
+        exempt_paths=("/v1/health",),
+        max_clients=100,
+    )
+    transport = ASGITransport(app=create_app(service_name="test-service", rate_limit=rate_limit))
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first_response = await client.get("/v1/health")
+        second_response = await client.get("/v1/health")
+        return first_response, second_response
+
+
+async def fetch_response_with_disabled_rate_limit() -> Response:
+    rate_limit = RateLimitConfig(
+        enabled=False,
+        requests=1,
+        window_seconds=60,
+        exempt_paths=(),
+        max_clients=100,
+    )
+    transport = ASGITransport(app=create_app(service_name="test-service", rate_limit=rate_limit))
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.get("/v1/unknown")
+        return await client.get("/v1/unknown")
+
+
 def test_health_endpoint_returns_minimal_liveness_payload() -> None:
     response = anyio.run(fetch_health_response)
 
@@ -155,6 +205,66 @@ def test_cors_uses_configured_origin_allow_list() -> None:
     assert allowed_response.headers["Access-Control-Allow-Credentials"] == "true"
     assert rejected_response.status_code == 400
     assert "Access-Control-Allow-Origin" not in rejected_response.headers
+
+
+def test_rate_limit_rejects_requests_after_configured_window_budget() -> None:
+    first_response, second_response, limited_response = anyio.run(fetch_rate_limited_responses)
+
+    assert first_response.status_code == 404
+    assert first_response.headers["RateLimit-Limit"] == "2"
+    assert first_response.headers["RateLimit-Remaining"] == "1"
+    assert second_response.status_code == 404
+    assert second_response.headers["RateLimit-Remaining"] == "0"
+    assert limited_response.status_code == 429
+    assert limited_response.json() == {"detail": "Rate limit exceeded."}
+    assert limited_response.headers["Retry-After"] == "60"
+    assert limited_response.headers["RateLimit-Remaining"] == "0"
+    assert limited_response.headers["X-Request-ID"]
+
+
+def test_rate_limit_exempts_configured_paths() -> None:
+    first_response, second_response = anyio.run(fetch_health_responses_with_tight_rate_limit)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert "RateLimit-Limit" not in first_response.headers
+    assert "RateLimit-Limit" not in second_response.headers
+
+
+def test_rate_limit_can_be_disabled() -> None:
+    response = anyio.run(fetch_response_with_disabled_rate_limit)
+
+    assert response.status_code == 404
+    assert "RateLimit-Limit" not in response.headers
+
+
+def test_rate_limit_window_resets_after_configured_duration() -> None:
+    current_time = 10.0
+
+    def clock() -> float:
+        return current_time
+
+    limiter = FixedWindowRateLimiter(
+        RateLimitConfig(
+            enabled=True,
+            requests=1,
+            window_seconds=5,
+            exempt_paths=(),
+            max_clients=100,
+        ),
+        clock=clock,
+    )
+
+    first_result = limiter.check("client-1")
+    limited_result = limiter.check("client-1")
+    current_time = 15.0
+    reset_result = limiter.check("client-1")
+
+    assert first_result.allowed is True
+    assert limited_result.allowed is False
+    assert limited_result.retry_after_seconds == 5
+    assert reset_result.allowed is True
+    assert reset_result.remaining == 0
 
 
 def test_rest_requests_echo_valid_request_id() -> None:

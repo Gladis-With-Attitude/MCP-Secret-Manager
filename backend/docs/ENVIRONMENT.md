@@ -42,6 +42,11 @@ explicit `ConfigurationError` when a critical setting is missing or unsafe.
 | `MCP_SECRET_MANAGER_CORS_ALLOWED_HEADERS` | CSV string | `Authorization,Content-Type,X-CSRF-Token` | yes | Allowed CORS headers. |
 | `MCP_SECRET_MANAGER_CORS_ALLOW_CREDENTIALS` | boolean | `true` | no | Whether CORS credentials are allowed. Cannot be used with wildcard origins. Production rejects wildcard origins. |
 | `MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED` | boolean | `true` | no | Enables baseline REST security headers. Must be `true` in production. HSTS is emitted when `MCP_SECRET_MANAGER_TLS_REQUIRED=true`. |
+| `MCP_SECRET_MANAGER_RATE_LIMIT_ENABLED` | boolean | `true` | no | Enables in-process REST rate limiting. Must be `true` in production. |
+| `MCP_SECRET_MANAGER_RATE_LIMIT_REQUESTS` | integer | `120` | no | Maximum counted REST requests per client and window. |
+| `MCP_SECRET_MANAGER_RATE_LIMIT_WINDOW_SECONDS` | integer | `60` | no | Fixed-window duration for REST rate limiting. |
+| `MCP_SECRET_MANAGER_RATE_LIMIT_EXEMPT_PATHS` | CSV string | `/v1/health,/v1/metrics` | no | Paths excluded from REST rate limiting for probes and scrapes. |
+| `MCP_SECRET_MANAGER_RATE_LIMIT_MAX_CLIENTS` | integer | `10000` | no | Maximum in-memory client windows kept per process before oldest entries are pruned. |
 | `MCP_SECRET_MANAGER_MCP_ENABLED` | boolean | `true` | no | Enables MCP runtime configuration. |
 | `MCP_SECRET_MANAGER_DOCKER_ENABLED` | boolean | `false` | no | Marks the runtime as Docker-managed. |
 | `MCP_SECRET_MANAGER_AUDIT_RETENTION_DAYS` | integer | `365` | no | Audit retention window in days. |
@@ -86,6 +91,7 @@ Production validation rejects:
 - `MCP_SECRET_MANAGER_TLS_REQUIRED=false`;
 - `MCP_SECRET_MANAGER_SECURE_COOKIES=false`;
 - `MCP_SECRET_MANAGER_SECURITY_HEADERS_ENABLED=false`;
+- `MCP_SECRET_MANAGER_RATE_LIMIT_ENABLED=false`;
 - `MCP_SECRET_MANAGER_ALLOW_INSECURE_DEV_DEFAULTS=true`;
 - non-HTTPS CORS origins;
 - wildcard CORS origins in production or when credentials are enabled.
@@ -106,3 +112,14 @@ status code and duration.
 duration totals for HTTP requests in the current process. Metrics labels use
 route templates where the REST router has resolved them; request bodies,
 authorization headers, raw API keys and secret values are not exposed.
+
+## REST Rate Limiting
+
+REST rate limiting uses local in-process fixed windows keyed by the direct client
+address seen by the ASGI server. It is intentionally simple and requires no
+external storage, so limits are best-effort across multiple workers or after a
+process restart. Responses include `RateLimit-Limit`, `RateLimit-Remaining` and
+`RateLimit-Reset`; rejected requests return `429` with `Retry-After`.
+
+`/v1/health` and `/v1/metrics` are exempt by default so readiness checks and
+Prometheus scrapes do not consume client budgets.
