@@ -13,13 +13,16 @@ The repository is now organized as a monorepo:
 
 ## Installation
 
-Use Docker for local development. The host does not need Node.js/npm or Python
-dependencies installed to start the full stack.
+Use Docker for local development. The host does not need Node.js/npm, Python or
+PostgreSQL dependencies installed to start the full stack.
 
 ```bash
 cp .env.example .env
 make up
 ```
+
+See `docs/INSTALLATION_GUIDE.md` for prerequisites, first sign-in, local smoke
+checks and the production configuration boundary.
 
 ## Scripts
 
@@ -131,7 +134,8 @@ Backend documentation lives in `backend/docs/`. Frontend documentation lives in
 `frontend/docs/`. The project delivery roadmap lives in
 `docs/PROJECT_ROADMAP.md`. The top-level user guide lives in
 `docs/USER_GUIDE.md`, the administrator guide lives in
-`docs/ADMINISTRATOR_GUIDE.md`, and the top-level operator backup entry point
+`docs/ADMINISTRATOR_GUIDE.md`, the installation guide lives in
+`docs/INSTALLATION_GUIDE.md`, and the top-level operator backup entry point
 lives in `docs/BACKUP_GUIDE.md`.
 
 ## Conventions
