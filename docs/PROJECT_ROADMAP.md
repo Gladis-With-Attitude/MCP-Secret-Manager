@@ -227,11 +227,17 @@ safe metadata and is exercised by CI with a non-secret synthetic production env.
 
 ### D5 - Backup & Recovery
 
-- PostgreSQL backups
-- Restore procedure
-- Recovery tests
-- Rotation strategy
-- Disaster recovery documentation
+| Slice | Status | Scope |
+| --- | --- | --- |
+| D5a | ✅ | Local PostgreSQL backup and restore operator foundation |
+| D5b | ⏳ | Recovery tests |
+| D5c | ⏳ | Rotation strategy |
+| D5d | ⏳ | Disaster recovery documentation |
+
+D5a adds Makefile targets and operator scripts for custom-format PostgreSQL
+backups and guarded restores through the existing Compose database service. It
+includes checksum generation, restricted local file permissions and initial
+documentation for keeping database dumps separate from application master keys.
 
 ### D6 - Documentation
 

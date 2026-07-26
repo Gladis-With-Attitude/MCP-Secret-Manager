@@ -125,3 +125,24 @@ Validate the checked-in wiring before deployment changes with:
 ```bash
 docker compose --env-file .env.example --profile observability config
 ```
+
+## Backup And Recovery
+
+The initial D5 backup foundation covers local and production-like PostgreSQL
+operations through the root Makefile:
+
+```bash
+make db-backup
+make db-restore BACKUP_FILE=dist/backups/postgres/manual.dump RESTORE_CONFIRM=replace
+```
+
+Backups are custom-format PostgreSQL dumps created by `pg_dump` with owner and
+privilege statements removed, saved with local mode `600`, and accompanied by a
+`sha256` checksum. Treat every dump as sensitive because it contains encrypted
+secret values and metadata. Keep the application master key in a separate secret
+manager or recovery channel; do not store it next to PostgreSQL backups.
+
+Before a restore, stop application writers, verify the checksum, confirm that
+the target database is the intended environment, then use
+`RESTORE_CONFIRM=replace`. After restore, run migrations/current-state checks
+and application smoke tests before returning traffic.

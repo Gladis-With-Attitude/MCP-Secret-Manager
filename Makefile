@@ -28,11 +28,14 @@ RELEASE_VERSION ?= dev
 RELEASE_DIST_DIR ?= dist/release
 RELEASE_ARCHIVE_PREFIX ?= mcp-secret-manager-$(RELEASE_VERSION)
 DEPLOYMENT_ENV_FILE ?= .env.production
+BACKUP_DIR ?= dist/backups/postgres
+BACKUP_FILE ?=
+RESTORE_CONFIRM ?=
 
 GITLEAKS_IMAGE ?= ghcr.io/gitleaks/gitleaks:v8.30.1
 PIP_AUDIT_VERSION ?= 2.10.1
 
-.PHONY: install-dev up up-db up-observability down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset seed-run frontend-warm-pages secret-scan dependency-scan docker-build docker-build-production deployment-readiness playwright-e2e release-artifacts format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
+.PHONY: install-dev up up-db up-observability down logs logs-db logs-bootstrap db-upgrade db-downgrade db-current db-history db-revision db-reset db-backup db-restore seed-run frontend-warm-pages secret-scan dependency-scan docker-build docker-build-production deployment-readiness playwright-e2e release-artifacts format lint typecheck test verify pages page-home page-design-system page-dashboard page-vaults page-vault-new page-vault page-vault-edit page-projects page-vault-projects page-project-new page-project page-project-edit page-secrets page-project-secrets page-secret-new page-secret page-secret-edit page-secret-versions page-secret-version page-secret-rotate page-api-keys page-api-key-new page-api-key page-audit page-audit-event page-rbac page-rbac-roles page-rbac-role-new page-rbac-role page-rbac-role-edit page-rbac-user page-profile page-settings page-settings-security page-settings-preferences page-settings-notifications
 
 define open_frontend_page
 	@url="$(FRONTEND_URL)$(1)"; \
@@ -197,6 +200,13 @@ db-revision:
 db-reset:
 	@test "$(CONFIRM_RESET)" = "dev" || (echo "Refusing to reset database. Re-run with CONFIRM_RESET=dev."; exit 1)
 	$(COMPOSE) --env-file $(ENV_FILE) run --rm -e MCP_SECRET_MANAGER_ALLOW_DB_RESET=true migrations sh /app/scripts/manage-db.sh reset
+
+db-backup:
+	ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" BACKUP_DIR="$(BACKUP_DIR)" BACKUP_FILE="$(BACKUP_FILE)" scripts/postgres-backup.sh
+
+db-restore:
+	@test -n "$(BACKUP_FILE)" || (echo "BACKUP_FILE is required."; exit 1)
+	ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" RESTORE_CONFIRM="$(RESTORE_CONFIRM)" scripts/postgres-restore.sh "$(BACKUP_FILE)"
 
 format:
 	cd backend && $(PYTHON) -m ruff format .
