@@ -153,7 +153,7 @@ keys, session tokens and secret material.
 - D2a ✅ FastAPI baseline security headers and runtime-configured strict CORS
 - D2b ✅ CSRF protection for HTTP-only session-cookie authentication
 - D2c ✅ In-process REST rate limiting
-- Secret scanning
+- Secret scanning ✅
 - Dependency scanning
 
 D2a applies baseline HTTP security headers to REST responses and wires FastAPI
@@ -171,6 +171,11 @@ address. The first slice intentionally avoids external storage; it exposes
 standard rate-limit headers, rejects excess requests with `429`, exempts health
 and metrics probes by default, and requires the limiter to stay enabled in
 production configuration.
+
+Secret scanning adds a dedicated Gitleaks CI job that scans repository history
+on pull requests, manual runs and pushes to `main` or
+`security/production-readiness`. The same scanner can be run locally with
+`make secret-scan`.
 
 ### D3 - CI/CD
 
