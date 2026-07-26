@@ -214,13 +214,16 @@ publish container images or require deployment secrets.
 | Slice | Status | Scope |
 | --- | --- | --- |
 | D4a | ✅ | Production backend and frontend Docker targets with multi-stage builds, non-root runtime users and container health checks |
+| D4b | ✅ | Deployment readiness command for production backend/frontend environment validation, with unit coverage and CI gate |
 
 D4a keeps the existing development Compose targets unchanged and adds dedicated
 production image targets for backend and frontend. Local and CI validation can
 build the hardened targets with `make docker-build-production`.
 
-- Readiness checks
-- Environment validation
+D4b adds `make deployment-readiness DEPLOYMENT_ENV_FILE=.env.production` for
+local deployment checks. The command validates backend production security
+configuration and frontend public build variables from an env file, reports only
+safe metadata and is exercised by CI with a non-secret synthetic production env.
 
 ### D5 - Backup & Recovery
 

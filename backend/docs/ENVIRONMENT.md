@@ -13,6 +13,19 @@ Supported environments:
 The backend validates runtime configuration at startup and fails fast with an
 explicit `ConfigurationError` when a critical setting is missing or unsafe.
 
+Validate a deployment environment file before building or rolling out production
+services:
+
+```bash
+make deployment-readiness DEPLOYMENT_ENV_FILE=.env.production
+```
+
+The readiness command validates backend runtime settings and the public frontend
+build settings without printing secret values. It expects
+`MCP_SECRET_MANAGER_ENVIRONMENT=production`, production security toggles, a
+valid PostgreSQL URL, a non-placeholder 32-byte master key, HTTPS CORS/API
+origins and no development-only database reset/test settings.
+
 ## Variables
 
 | Variable | Type | Default | Required | Description |
