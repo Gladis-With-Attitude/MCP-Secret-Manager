@@ -262,6 +262,24 @@ def test_disaster_recovery_docs_cover_postgres_restore_runbook() -> None:
     assert "Compromise Scenarios" in docs
 
 
+def test_top_level_backup_guide_links_backup_recovery_and_rotation() -> None:
+    docs = read_repository_file("docs/BACKUP_GUIDE.md")
+    roadmap = read_repository_file("docs/PROJECT_ROADMAP.md")
+    readme = read_repository_file("README.md")
+
+    assert "make db-backup" in docs
+    assert "make db-restore" in docs
+    assert "RESTORE_CONFIRM=replace" in docs
+    assert "sha256sum -c" in docs
+    assert "MCP_SECRET_MANAGER_MASTER_KEY_BASE64" in docs
+    assert "separate approved channels" in docs
+    assert "backend/docs/DISASTER_RECOVERY.md" in docs
+    assert "backend/docs/ROTATION_STRATEGY.md" in docs
+    assert "D6a" in roadmap
+    assert "docs/BACKUP_GUIDE.md" in roadmap
+    assert "docs/BACKUP_GUIDE.md" in readme
+
+
 def test_rotation_strategy_docs_cover_backup_recovery_and_key_rotation() -> None:
     docs = read_repository_file("backend/docs/ROTATION_STRATEGY.md")
     disaster_recovery_docs = read_repository_file("backend/docs/DISASTER_RECOVERY.md")

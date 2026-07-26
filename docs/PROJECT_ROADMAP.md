@@ -258,16 +258,21 @@ scenarios.
 
 ### D6 - Documentation
 
-Complete:
+| Slice | Status | Scope |
+| --- | --- | --- |
+| D6a | ✅ | Top-level Backup Guide for operator backup handling and recovery links |
+| D6b | ⏳ | User Guide |
+| D6c | ⏳ | Administrator Guide |
+| D6d | ⏳ | Installation Guide |
+| D6e | ⏳ | Deployment Guide consolidation |
+| D6f | ⏳ | Upgrade Guide |
+| D6g | ⏳ | Troubleshooting Guide |
+| D6h | ⏳ | API Documentation |
 
-- User Guide
-- Administrator Guide
-- Installation Guide
-- Deployment Guide
-- Backup Guide
-- Upgrade Guide
-- Troubleshooting Guide
-- API Documentation
+D6a adds `docs/BACKUP_GUIDE.md` as the operator-facing backup entry point. It
+summarizes the D5 PostgreSQL backup tooling, sensitive artifact handling,
+checksum verification, restore readiness, master-key separation and links to
+the disaster recovery and rotation runbooks.
 
 ### D7 - Accessibility & UX
 
