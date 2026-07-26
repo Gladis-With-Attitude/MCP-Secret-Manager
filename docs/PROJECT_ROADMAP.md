@@ -264,7 +264,7 @@ scenarios.
 | D6b | ✅ | User Guide |
 | D6c | ✅ | Administrator Guide |
 | D6d | ✅ | Installation Guide |
-| D6e | ⏳ | Deployment Guide consolidation |
+| D6e | ✅ | Deployment Guide consolidation |
 | D6f | ⏳ | Upgrade Guide |
 | D6g | ⏳ | Troubleshooting Guide |
 | D6h | ⏳ | API Documentation |
@@ -289,6 +289,13 @@ covers Docker Compose prerequisites, source checkout, local environment setup,
 stack startup, first sign-in expectations, common local operations, smoke
 validation, production configuration boundaries and links to administration,
 backup and deployment references.
+
+D6e adds `docs/DEPLOYMENT_GUIDE.md` as the operator-facing deployment entry
+point. It consolidates backend deployment guidance into a practical production
+runbook covering prerequisites, configuration boundaries, production Docker
+targets, service ordering, TLS and reverse proxy assumptions, migrations,
+bootstrap, observability, backup and restore dependencies, readiness checks and
+rollback or upgrade handoffs.
 
 ### D7 - Accessibility & UX
 

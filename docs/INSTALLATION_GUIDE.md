@@ -226,4 +226,6 @@ storing real secrets.
   and routine operator checks.
 - `docs/USER_GUIDE.md` explains browser and MCP workflows after installation.
 - `docs/BACKUP_GUIDE.md` is the operator-facing backup entry point.
+- `docs/DEPLOYMENT_GUIDE.md` is the operator-facing production deployment entry
+  point.
 - `backend/docs/DEPLOYMENT.md` covers production deployment readiness.

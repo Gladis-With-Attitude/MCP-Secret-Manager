@@ -1,7 +1,9 @@
 # Deployment Guide
 
-This guide covers runtime configuration only. It does not introduce production
-infrastructure, new routes or authentication flows.
+This backend guide covers runtime configuration details only. Use
+`docs/DEPLOYMENT_GUIDE.md` as the top-level operator-facing deployment entry
+point. This file does not introduce production infrastructure, new routes or
+authentication flows.
 
 ## Environments
 

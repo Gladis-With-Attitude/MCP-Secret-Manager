@@ -378,9 +378,10 @@ the named variable. Do not weaken production safety toggles to make startup pass
 - `README.md` covers repository setup and local development entry points.
 - `docs/USER_GUIDE.md` covers end-user browser and MCP workflows.
 - `docs/BACKUP_GUIDE.md` is the top-level backup entry point.
+- `docs/DEPLOYMENT_GUIDE.md` is the production deployment entry point.
 - `backend/docs/BOOTSTRAP.md` documents system data bootstrap.
 - `backend/docs/ENVIRONMENT.md` documents runtime environment variables.
-- `backend/docs/DEPLOYMENT.md` covers production runtime configuration.
+- `backend/docs/DEPLOYMENT.md` covers backend runtime configuration details.
 - `backend/docs/ROTATION_STRATEGY.md` covers credential rotation.
 - `backend/docs/DISASTER_RECOVERY.md` covers restore and disaster recovery.
 - `backend/docs/API_SPEC.md` and `backend/docs/MCP_SPEC.md` describe the

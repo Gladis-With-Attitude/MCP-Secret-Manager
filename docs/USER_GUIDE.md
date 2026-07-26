@@ -362,6 +362,7 @@ value-read permission can explicitly reveal the current secret value.
 
 - `README.md` covers repository setup and local development entry points.
 - `docs/BACKUP_GUIDE.md` is the operator backup entry point.
+- `docs/DEPLOYMENT_GUIDE.md` is the production deployment entry point.
 - `backend/docs/ROTATION_STRATEGY.md` covers operational rotation strategy.
 - `backend/docs/DISASTER_RECOVERY.md` covers restore and disaster recovery.
-- `backend/docs/DEPLOYMENT.md` covers production runtime configuration.
+- `backend/docs/DEPLOYMENT.md` covers backend runtime configuration details.

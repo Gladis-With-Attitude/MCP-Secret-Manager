@@ -24,6 +24,9 @@ make up
 See `docs/INSTALLATION_GUIDE.md` for prerequisites, first sign-in, local smoke
 checks and the production configuration boundary.
 
+Use `docs/DEPLOYMENT_GUIDE.md` as the operator-facing production deployment
+entry point.
+
 ## Scripts
 
 ```bash
@@ -135,8 +138,9 @@ Backend documentation lives in `backend/docs/`. Frontend documentation lives in
 `docs/PROJECT_ROADMAP.md`. The top-level user guide lives in
 `docs/USER_GUIDE.md`, the administrator guide lives in
 `docs/ADMINISTRATOR_GUIDE.md`, the installation guide lives in
-`docs/INSTALLATION_GUIDE.md`, and the top-level operator backup entry point
-lives in `docs/BACKUP_GUIDE.md`.
+`docs/INSTALLATION_GUIDE.md`, the deployment guide lives in
+`docs/DEPLOYMENT_GUIDE.md`, and the top-level operator backup entry point lives
+in `docs/BACKUP_GUIDE.md`.
 
 ## Conventions
 

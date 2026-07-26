@@ -135,5 +135,5 @@ stored secret values are compromised and follow the incident rotation path.
   runbook.
 - `backend/docs/ROTATION_STRATEGY.md` covers routine and incident-driven
   credential rotation.
-- `backend/docs/DEPLOYMENT.md` covers production runtime configuration and
-  deployment readiness checks.
+- `docs/DEPLOYMENT_GUIDE.md` is the production deployment entry point.
+- `backend/docs/DEPLOYMENT.md` covers backend runtime configuration details.
