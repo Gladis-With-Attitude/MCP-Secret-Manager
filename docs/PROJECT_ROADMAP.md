@@ -262,7 +262,7 @@ scenarios.
 | --- | --- | --- |
 | D6a | ✅ | Top-level Backup Guide for operator backup handling and recovery links |
 | D6b | ✅ | User Guide |
-| D6c | ⏳ | Administrator Guide |
+| D6c | ✅ | Administrator Guide |
 | D6d | ⏳ | Installation Guide |
 | D6e | ⏳ | Deployment Guide consolidation |
 | D6f | ⏳ | Upgrade Guide |
@@ -278,6 +278,11 @@ D6b adds `docs/USER_GUIDE.md` as the concrete end-user entry point. It covers
 sign-in and sessions, UI navigation, vault/project/secret workflows, secret
 versions and rotation, API keys, MCP client usage, audit review, profile and
 security settings, common errors and safe handling expectations.
+
+D6c adds `docs/ADMINISTRATOR_GUIDE.md` as the administrator and operator entry
+point. It covers bootstrap, administrator access, RBAC, API keys, service
+accounts, audit review, production security controls, observability, backup and
+restore coordination, rotation links and routine operator checks.
 
 ### D7 - Accessibility & UX
 
