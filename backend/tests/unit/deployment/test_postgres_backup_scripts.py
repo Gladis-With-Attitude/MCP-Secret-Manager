@@ -260,3 +260,24 @@ def test_disaster_recovery_docs_cover_postgres_restore_runbook() -> None:
     assert "Never store the master key beside PostgreSQL dumps" in docs
     assert "Post-Restore Validation" in docs
     assert "Compromise Scenarios" in docs
+
+
+def test_rotation_strategy_docs_cover_backup_recovery_and_key_rotation() -> None:
+    docs = read_repository_file("backend/docs/ROTATION_STRATEGY.md")
+    disaster_recovery_docs = read_repository_file("backend/docs/DISASTER_RECOVERY.md")
+    database_docs = read_repository_file("db/README.md")
+
+    assert "make db-backup" in docs
+    assert "sha256sum -c" in docs
+    assert "Never store the master key beside PostgreSQL dumps" in docs
+    assert "MCP_SECRET_MANAGER_MASTER_KEY_BASE64" in docs
+    assert "MCP_SECRET_MANAGER_MASTER_KEY_VERSION" in docs
+    assert "Master Key Replacement" in docs
+    assert "secret.rotate" in docs
+    assert "API keys" in docs
+    assert "PostgreSQL credentials" in docs
+    assert "backup access" in docs
+    assert "restore the pre-rotation" in docs
+    assert "old runtime configuration together" in docs
+    assert "backend/docs/ROTATION_STRATEGY.md" in disaster_recovery_docs
+    assert "backend/docs/ROTATION_STRATEGY.md" in database_docs

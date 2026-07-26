@@ -56,6 +56,11 @@ The dump contains PostgreSQL data, encrypted secret values and metadata. It
 must be handled as sensitive operational data even though the application master
 key is not stored in PostgreSQL and must not be colocated with database dumps.
 
+Before high-risk bulk rotations, run or identify a current backup and verify its
+checksum. Rotation can change active credentials quickly, while rollback still
+depends on restoring a matching PostgreSQL dump and runtime key material
+together.
+
 ## Restore
 
 Restore is intentionally explicit because it replaces database objects from the
@@ -72,6 +77,10 @@ before returning traffic to the restored database.
 
 For full incident handling, restore decision gates and post-restore validation,
 use `backend/docs/DISASTER_RECOVERY.md`.
+
+For planned and incident-driven rotation of stored secret values, API keys,
+PostgreSQL credentials, backup access and the application master key, use
+`backend/docs/ROTATION_STRATEGY.md`.
 
 ## Reset
 

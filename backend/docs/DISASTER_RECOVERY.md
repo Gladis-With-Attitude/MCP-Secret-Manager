@@ -22,6 +22,10 @@ Disaster recovery requires two independent recovery channels:
 Never store the master key beside PostgreSQL dumps. A database dump plus the
 master key can expose all stored secrets.
 
+Use `backend/docs/ROTATION_STRATEGY.md` for planned and incident-driven
+rotation decisions involving stored secret values, API keys, PostgreSQL
+credentials, backup access and the application master key.
+
 ## Readiness Checklist
 
 Before an incident, operators should keep the following ready:
@@ -144,7 +148,7 @@ access paths that protected the dump.
 If a dump and the application master key may both be exposed, assume stored
 secret values are compromised. Restore availability first if needed, then rotate
 application credentials, API keys and downstream secrets according to the
-incident response plan.
+rotation strategy and incident response plan.
 
 If the master key is lost and no approved recovery copy exists, encrypted
 secret values in PostgreSQL cannot be decrypted by the application. Preserve the
