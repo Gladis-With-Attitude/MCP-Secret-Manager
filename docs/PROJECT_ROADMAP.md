@@ -51,6 +51,8 @@ connected.
 
 ### C1 - Complete End-to-End Test Suite
 
+Status: ✅ Done
+
 Create complete scenarios covering:
 
 - Login

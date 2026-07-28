@@ -18,7 +18,8 @@ export default defineConfig({
   ],
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   retries: process.env.CI ? 1 : 0,
-  testDir: "./tests/e2e",
+  testDir: ".",
+  testMatch: ["tests/e2e/**/*.spec.ts", "e2e/**/*.spec.ts"],
   timeout: 90_000,
   use: {
     baseURL,
